@@ -12,10 +12,13 @@ from pathlib import Path
 src_path = Path(__file__).parent / "src"
 sys.path.append(str(src_path))
 
-from modules.lti_systems import LTISystemsModule
-from modules.state_transformation import StateTransformationModule
-from modules.linearization import LinearizationModule
-from modules.laplace_transform import LaplaceTransformModule
+from src.modules.lti_systems import LTISystemsModule
+from src.modules.state_transformation import StateTransformationModule
+from src.modules.linearization import LinearizationModule
+from src.modules.laplace_transform import LaplaceTransformModule
+from src.modules.transfer_elements import TransferElementsModule
+from src.modules.block_diagram import BlockDiagramModule
+from src.modules.advanced_transfer_functions import AdvancedTransferFunctionModule
 from utils.display_utils import display_step_by_step, display_latex
 from utils.calculation_logger import CalculationLogger
 
@@ -40,7 +43,10 @@ def main():
         "LTI-Systeme & Zustandsraumdarstellung": LTISystemsModule(),
         "Zustandstransformation": StateTransformationModule(),
         "Linearisierung": LinearizationModule(),
-        "Laplace-Transformation": LaplaceTransformModule()
+        "Laplace-Transformation": LaplaceTransformModule(),
+        "Übertragungsglieder": TransferElementsModule(),
+        "Blockschaltbild-Umformung": BlockDiagramModule(),
+        "Erweiterte Übertragungsfunktionen": AdvancedTransferFunctionModule()
     }
     
     selected_module = st.sidebar.selectbox(
