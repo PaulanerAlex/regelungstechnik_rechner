@@ -6,6 +6,7 @@ import streamlit as st
 import sympy as sp
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, display_matrix
+from utils.safe_sympify import safe_sympify
 
 class LinearizationModule(BaseModule):
     """Modul für Linearisierung von Differentialgleichungen"""
@@ -126,7 +127,7 @@ class LinearizationModule(BaseModule):
         # Systemfunktionen parsen
         f_funcs = []
         for eq in equations:
-            f_func = sp.sympify(eq)
+            f_func = safe_sympify(eq)
             f_funcs.append(f_func)
         
         # Gleichgewichtspunkt parsen
@@ -230,7 +231,7 @@ class LinearizationModule(BaseModule):
         # Systemfunktionen parsen
         f_funcs = []
         for eq in equations:
-            f_func = sp.sympify(eq)
+            f_func = safe_sympify(eq)
             f_funcs.append(f_func)
         
         # Gleichgewichtspunkte parsen

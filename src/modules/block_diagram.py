@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex
+from utils.safe_sympify import safe_sympify
 
 class BlockDiagramModule(BaseModule):
     """Modul für Blockschaltbild-Umformungen und -Vereinfachungen"""
@@ -99,8 +100,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="series_calc"):
                 try:
                     s = sp.Symbol('s')
-                    G1 = sp.sympify(g1_input)
-                    G2 = sp.sympify(g2_input)
+                    G1 = safe_sympify(g1_input)
+                    G2 = safe_sympify(g2_input)
                     
                     G_total = G1 * G2
                     G_total_simplified = sp.simplify(G_total)
@@ -157,8 +158,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="parallel_calc"):
                 try:
                     s = sp.Symbol('s')
-                    G1 = sp.sympify(g1_input)
-                    G2 = sp.sympify(g2_input)
+                    G1 = safe_sympify(g1_input)
+                    G2 = safe_sympify(g2_input)
                     
                     G_total = G1 + G2
                     G_total_simplified = sp.simplify(G_total)
@@ -207,8 +208,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="feedback_calc"):
                 try:
                     s = sp.Symbol('s')
-                    G0 = sp.sympify(g0_input)
-                    H = sp.sympify(h_input)
+                    G0 = safe_sympify(g0_input)
+                    H = safe_sympify(h_input)
                     
                     # Führungsübertragungsfunktion
                     G_w = G0 / (1 + G0 * H)
@@ -277,8 +278,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="pos_feedback_calc"):
                 try:
                     s = sp.Symbol('s')
-                    G0 = sp.sympify(g0_input)
-                    H = sp.sympify(h_input)
+                    G0 = safe_sympify(g0_input)
+                    H = safe_sympify(h_input)
                     
                     G_total = G0 / (1 - G0 * H)
                     G_total_simplified = sp.simplify(G_total)
@@ -348,9 +349,9 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="ff_calc"):
                 try:
                     s = sp.Symbol('s')
-                    G0 = sp.sympify(g0_input)
-                    H = sp.sympify(h_input)
-                    F = sp.sympify(f_input)
+                    G0 = safe_sympify(g0_input)
+                    H = safe_sympify(h_input)
+                    F = safe_sympify(f_input)
                     
                     G_feedback = G0 / (1 + G0 * H)
                     G_total = G_feedback + F
@@ -631,8 +632,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="calc_series_btn"):
                 try:
                     s = sp.Symbol('s')
-                    G1 = sp.sympify(g1)
-                    G2 = sp.sympify(g2)
+                    G1 = safe_sympify(g1)
+                    G2 = safe_sympify(g2)
                     
                     G_total = sp.simplify(G1 * G2)
                     
@@ -670,8 +671,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="calc_parallel_btn"):
                 try:
                     s = sp.Symbol('s')
-                    G1 = sp.sympify(g1)
-                    G2 = sp.sympify(g2)
+                    G1 = safe_sympify(g1)
+                    G2 = safe_sympify(g2)
                     
                     G_total = sp.simplify(G1 + G2)
                     
@@ -700,9 +701,9 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="ctrl_btn"):
                 try:
                     s = sp.Symbol('s')
-                    G0 = sp.sympify(g0)
-                    Gr = sp.sympify(gr)
-                    H = sp.sympify(h)
+                    G0 = safe_sympify(g0)
+                    Gr = safe_sympify(gr)
+                    H = safe_sympify(h)
                     
                     # Offene Kette
                     G_open = Gr * G0
@@ -759,9 +760,9 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="dist_btn"):
                 try:
                     s = sp.Symbol('s')
-                    Gr = sp.sympify(gr)
-                    G0 = sp.sympify(g0)
-                    H = sp.sympify(h)
+                    Gr = safe_sympify(gr)
+                    G0 = safe_sympify(g0)
+                    H = safe_sympify(h)
                     
                     # Übertragungsfunktionen
                     G_open = Gr * G0
@@ -829,11 +830,11 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="casc_btn"):
                 try:
                     s = sp.Symbol('s')
-                    Gr1 = sp.sympify(gr1)
-                    Gr2 = sp.sympify(gr2)
-                    G01 = sp.sympify(g01)
-                    G02 = sp.sympify(g02)
-                    H1 = sp.sympify(h1)
+                    Gr1 = safe_sympify(gr1)
+                    Gr2 = safe_sympify(gr2)
+                    G01 = safe_sympify(g01)
+                    G02 = safe_sympify(g02)
+                    H1 = safe_sympify(h1)
                     
                     # Innerer Kreis
                     G_inner = sp.simplify((Gr2 * G01) / (1 + Gr2 * G01 * H1))
@@ -914,10 +915,10 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="2dof_btn"):
                 try:
                     s = sp.Symbol('s')
-                    Gr1 = sp.sympify(gr1)
-                    Gr2 = sp.sympify(gr2)
-                    Gv = sp.sympify(gv)
-                    G0 = sp.sympify(g0)
+                    Gr1 = safe_sympify(gr1)
+                    Gr2 = safe_sympify(gr2)
+                    Gv = safe_sympify(gv)
+                    G0 = safe_sympify(g0)
                     
                     # Übertragungsfunktionen
                     denominator = 1 + Gr2 * G0
@@ -964,8 +965,8 @@ class BlockDiagramModule(BaseModule):
             if st.button("Berechnen", key="smith_btn"):
                 try:
                     s = sp.Symbol('s')
-                    Gr = sp.sympify(gr)
-                    G0 = sp.sympify(g0)
+                    Gr = safe_sympify(gr)
+                    G0 = safe_sympify(g0)
                     
                     # Vereinfachte Übertragungsfunktion (ideal)
                     G_w_ideal = sp.simplify((Gr * G0) / (1 + Gr * G0))
@@ -1016,10 +1017,10 @@ class BlockDiagramModule(BaseModule):
             if st.button("Analysieren", key="mimo_btn"):
                 try:
                     s = sp.Symbol('s')
-                    G11 = sp.sympify(g11)
-                    G12 = sp.sympify(g12)
-                    G21 = sp.sympify(g21)
-                    G22 = sp.sympify(g22)
+                    G11 = safe_sympify(g11)
+                    G12 = safe_sympify(g12)
+                    G21 = safe_sympify(g21)
+                    G22 = safe_sympify(g22)
                     
                     # RGA (Relative Gain Array) bei s=0
                     G11_dc = G11.subs(s, 0)
@@ -1027,20 +1028,61 @@ class BlockDiagramModule(BaseModule):
                     G21_dc = G21.subs(s, 0)
                     G22_dc = G22.subs(s, 0)
                     
-                    # RGA Berechnung
-                    det_G = G11_dc * G22_dc - G12_dc * G21_dc
-                    lambda_11 = (G11_dc * G22_dc) / det_G
-                    lambda_12 = (G12_dc * G21_dc) / det_G
+                    # Korrekte RGA Berechnung: Λ = G .* (G^(-1))^T
+                    G_matrix = np.array([[float(G11_dc), float(G12_dc)], 
+                                       [float(G21_dc), float(G22_dc)]])
                     
-                    st.markdown("**Relative Gain Array (RGA) bei s=0:**")
-                    st.latex(f"\\Lambda = \\begin{{bmatrix}} {lambda_11:.3f} & {lambda_12:.3f} \\\\ {lambda_12:.3f} & {lambda_11:.3f} \\end{{bmatrix}}")
+                    try:
+                        G_inv = np.linalg.inv(G_matrix)
+                        G_inv_T = G_inv.T
+                        
+                        # Element-weise Multiplikation
+                        Lambda = G_matrix * G_inv_T
+                        
+                        lambda_11 = Lambda[0, 0]
+                        lambda_12 = Lambda[0, 1]
+                        lambda_21 = Lambda[1, 0] 
+                        lambda_22 = Lambda[1, 1]
+                        
+                        st.markdown("**Relative Gain Array (RGA) bei s=0:**")
+                        st.latex(f"\\Lambda = \\begin{{bmatrix}} {lambda_11:.3f} & {lambda_12:.3f} \\\\ {lambda_21:.3f} & {lambda_22:.3f} \\end{{bmatrix}}")
+                        
+                        # RGA-Eigenschaften prüfen
+                        row_sum = lambda_11 + lambda_12
+                        col_sum = lambda_11 + lambda_21
+                        
+                        st.write(f"Zeilensumme: {row_sum:.6f}")
+                        st.write(f"Spaltensumme: {col_sum:.6f}")
+                        
+                        if abs(lambda_11 - 1) < 0.1:
+                            st.success("✓ Schwache Kopplung - diagonale Regelung möglich")
+                        elif lambda_11 < 0:
+                            st.error("✗ Negative RGA-Elemente - System schwer regelbar")
+                        else:
+                            st.warning("⚠ Starke Kopplung - Entkopplungsregelung empfohlen")
+                            
+                    except np.linalg.LinAlgError:
+                        st.error("❌ Matrix ist singulär - RGA nicht berechenbar")
                     
-                    if abs(lambda_11 - 1) < 0.1:
-                        st.success("✓ Schwache Kopplung - diagonale Regelung möglich")
-                    elif lambda_11 < 0:
-                        st.error("✗ Negative RGA-Elemente - System schwer regelbar")
-                    else:
-                        st.warning("⚠ Starke Kopplung - Entkopplungsregelung empfohlen")
+                        st.markdown("**Relative Gain Array (RGA) bei s=0:**")
+                        st.latex(f"\\Lambda = \\begin{{bmatrix}} {lambda_11:.3f} & {lambda_12:.3f} \\\\ {lambda_21:.3f} & {lambda_22:.3f} \\end{{bmatrix}}")
+                        
+                        # RGA-Eigenschaften prüfen
+                        row_sum = lambda_11 + lambda_12
+                        col_sum = lambda_11 + lambda_21
+                        
+                        st.write(f"Zeilensumme: {row_sum:.6f}")
+                        st.write(f"Spaltensumme: {col_sum:.6f}")
+                        
+                        if abs(lambda_11 - 1) < 0.1:
+                            st.success("✓ Schwache Kopplung - diagonale Regelung möglich")
+                        elif lambda_11 < 0:
+                            st.error("✗ Negative RGA-Elemente - System schwer regelbar")
+                        else:
+                            st.warning("⚠ Starke Kopplung - Entkopplungsregelung empfohlen")
+                            
+                    except np.linalg.LinAlgError:
+                        st.error("❌ Matrix ist singulär - RGA nicht berechenbar")
                     
                 except Exception as e:
                     st.error(f"Fehler: {e}")

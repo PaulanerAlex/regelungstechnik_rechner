@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import control as ct
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex
+from utils.safe_sympify import safe_sympify
 
 class AdvancedTransferFunctionModule(BaseModule):
     """Modul für erweiterte Übertragungsfunktionsanalyse"""
@@ -76,7 +77,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                 try:
                     # SymPy-Analyse
                     s = sp.Symbol('s')
-                    G = sp.sympify(transfer_function)
+                    G = safe_sympify(transfer_function)
                     
                     # Zähler und Nenner extrahieren
                     numerator = sp.numer(G)
@@ -257,7 +258,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                 try:
                     # SymPy für symbolische Analyse
                     s = sp.Symbol('s')
-                    G = sp.sympify(transfer_function)
+                    G = safe_sympify(transfer_function)
                     
                     st.latex(f"G(s) = {sp.latex(G)}")
                     
@@ -400,11 +401,11 @@ class AdvancedTransferFunctionModule(BaseModule):
             if st.button("Nyquist-Diagramm erstellen", key="nyquist_plot"):
                 try:
                     s = sp.Symbol('s')
-                    G = sp.sympify(transfer_function)
+                    G = safe_sympify(transfer_function)
                     
                     if add_controller:
                         G = K * G
-                        st.latex(f"G_0(s) = {K} \\cdot {sp.latex(sp.sympify(transfer_function))} = {sp.latex(G)}")
+                        st.latex(f"G_0(s) = {K} \\cdot {sp.latex(safe_sympify(transfer_function))} = {sp.latex(G)}")
                     else:
                         st.latex(f"G(s) = {sp.latex(G)}")
                     
@@ -567,7 +568,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                 try:
                     s = sp.Symbol('s')
                     K = sp.Symbol('K', real=True, positive=True)
-                    G0 = sp.sympify(open_loop)
+                    G0 = safe_sympify(open_loop)
                     
                     st.latex(f"G_0(s) = {sp.latex(G0)}")
                     
@@ -636,7 +637,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                                     customdata=k_path
                                 ))
                     
-                    # Pole bei K=0 (offene Kette)
+                    # Pole bei K=0 (offene Kette) - das sind die Pole von G₀(s)
                     open_poles = sp.solve(sp.denom(G0), s)
                     if open_poles:
                         pole_real_open = [complex(pole.evalf()).real for pole in open_poles]
@@ -788,7 +789,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                 s = sp.Symbol('s')
                 
                 if system_type == "Übertragungsfunktion":
-                    G = sp.sympify(transfer_function)
+                    G = safe_sympify(transfer_function)
                     st.latex(f"G(s) = {sp.latex(G)}")
                     
                     if feedback:
@@ -800,7 +801,7 @@ class AdvancedTransferFunctionModule(BaseModule):
                         st.markdown("**Offene Kette**")
                     
                 else:
-                    char_poly_expr = sp.sympify(char_poly)
+                    char_poly_expr = safe_sympify(char_poly)
                 
                 char_poly_expanded = sp.expand(char_poly_expr)
                 st.latex(f"\\text{{Charakteristisches Polynom: }} {sp.latex(char_poly_expanded)} = 0")

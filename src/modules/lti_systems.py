@@ -7,6 +7,7 @@ import sympy as sp
 import numpy as np
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, display_matrix, plot_system_response
+from utils.safe_sympify import safe_sympify
 import control
 
 class LTISystemsModule(BaseModule):
@@ -91,11 +92,11 @@ class LTISystemsModule(BaseModule):
         if st.button("Zustandsraumdarstellung berechnen", key="calc_ss"):
             try:
                 if order == 2:
-                    coeffs_a = [sp.sympify(a2), sp.sympify(a1), sp.sympify(a0)]
-                    coeffs_b = [sp.sympify(b1), sp.sympify(b0)]
+                    coeffs_a = [safe_sympify(a2), safe_sympify(a1), safe_sympify(a0)]
+                    coeffs_b = [safe_sympify(b1), safe_sympify(b0)]
                 elif order == 3:
-                    coeffs_a = [sp.sympify(a3), sp.sympify(a2), sp.sympify(a1), sp.sympify(a0)]
-                    coeffs_b = [sp.sympify(b2), sp.sympify(b1), sp.sympify(b0)]
+                    coeffs_a = [safe_sympify(a3), safe_sympify(a2), safe_sympify(a1), safe_sympify(a0)]
+                    coeffs_b = [safe_sympify(b2), safe_sympify(b1), safe_sympify(b0)]
                 
                 self._calculate_state_space_from_diff(coeffs_a, coeffs_b, order)
                 
@@ -315,8 +316,8 @@ class LTISystemsModule(BaseModule):
         self.logger.clear()
         
         s = sp.Symbol('s')
-        numerator = sp.sympify(num_str)
-        denominator = sp.sympify(den_str)
+        numerator = safe_sympify(num_str)
+        denominator = safe_sympify(den_str)
         
         # Übertragungsfunktion
         G_s = numerator / denominator
@@ -594,7 +595,7 @@ class LTISystemsModule(BaseModule):
         matrix_data = []
         
         for line in lines:
-            row = [sp.sympify(x.strip()) for x in line.split(',')]
+            row = [safe_sympify(x.strip()) for x in line.split(',')]
             matrix_data.append(row)
         
         return sp.Matrix(matrix_data)

@@ -5,6 +5,7 @@ Basis-Modul für alle Regelungstechnik-Module
 from abc import ABC, abstractmethod
 import streamlit as st
 from utils.calculation_logger import CalculationLogger
+from utils.safe_sympify import safe_sympify
 
 class BaseModule(ABC):
     """Basis-Klasse für alle Regelungstechnik-Module"""

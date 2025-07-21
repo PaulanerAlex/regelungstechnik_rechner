@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, plot_system_response
+from utils.safe_sympify import safe_sympify
 
 class TransferElementsModule(BaseModule):
     """Modul für Informationen über verschiedene Übertragungsglieder"""
@@ -178,6 +179,7 @@ class TransferElementsModule(BaseModule):
             T = st.number_input("Zeitkonstante T [s]:", value=1.0, step=0.1, key="pt1_t")
             
             # Sprungantwort: y(t) = K * (1 - exp(-t/T))
+            # Verwende 5*T für korrekten Endwert (98.2% des Endwerts)
             t = np.linspace(0, 5*T, 1000)
             y = K * (1 - np.exp(-t/T))
             

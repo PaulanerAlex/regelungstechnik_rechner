@@ -6,6 +6,7 @@ import streamlit as st
 import sympy as sp
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, display_matrix
+from utils.safe_sympify import safe_sympify
 
 class StateTransformationModule(BaseModule):
     """Modul für Zustandstransformationen"""
@@ -103,7 +104,7 @@ class StateTransformationModule(BaseModule):
         matrix_data = []
         
         for line in lines:
-            row = [sp.sympify(x.strip()) for x in line.split(',')]
+            row = [safe_sympify(x.strip()) for x in line.split(',')]
             matrix_data.append(row)
         
         return sp.Matrix(matrix_data)

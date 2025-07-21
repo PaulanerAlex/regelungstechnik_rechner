@@ -7,6 +7,7 @@ import sympy as sp
 import numpy as np
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, display_matrix, plot_system_response, plot_pole_zero
+from utils.safe_sympify import safe_sympify
 
 class LaplaceTransformModule(BaseModule):
     """Modul für Laplace-Transformation"""
@@ -238,9 +239,9 @@ class LaplaceTransformModule(BaseModule):
         # Symbole definieren
         t, s = sp.symbols('t s', real=True, positive=True)
         
-        # Funktion parsen
+        # Funktion mit sicherer Konversion parsen
         try:
-            f_t = sp.sympify(function_str)
+            f_t = safe_sympify(function_str, {'t': t, 's': s}, test_laplace=False)
         except Exception as e:
             st.error(f"Fehler beim Parsen der Funktion: {str(e)}")
             return
@@ -493,6 +494,35 @@ class LaplaceTransformModule(BaseModule):
                 except:
                     pass  # Wenn Parameter-Extraktion fehlschlägt, weitermachen
         
+        # Kombinationen: t*exp(-a*t) -> 1/(s+a)^2, mit Koeffizienten
+        if f_t.is_Mul:
+            t_part = None
+            exp_part = None
+            coeff = 1
+            
+            for factor in f_t.args:
+                if factor == t:
+                    t_part = factor
+                elif factor.func == sp.exp or (factor.is_Pow and factor.base == sp.E):
+                    exp_part = factor
+                elif factor.is_number:
+                    coeff *= factor
+            
+            if t_part and exp_part:
+                try:
+                    # Extrahiere Parameter der Exponentialfunktion
+                    if exp_part.func == sp.exp:
+                        exp_arg = exp_part.args[0]
+                    else:  # Pow form
+                        exp_arg = exp_part.exp
+                    
+                    if is_linear_in_t(exp_arg):
+                        a = -sp.diff(exp_arg, t)  # exp(-a*t)
+                        # t*exp(-a*t) -> 1/(s+a)^2, mit Koeffizient
+                        return coeff / (s + a)**2
+                except:
+                    pass  # Wenn Parameter-Extraktion fehlschlägt, weitermachen
+        
         # String-basierte Pattern-Erkennung für robuste Erkennung
         f_str = str(f_t)
         
@@ -507,6 +537,21 @@ class LaplaceTransformModule(BaseModule):
             return (s + 2)/((s + 2)**2 + 9)
         elif f_str == "exp(-2*t)*sin(3*t)":
             return 3/((s + 2)**2 + 9)
+        
+        # t*exp(-a*t) Pattern - wichtig für das gemeldete Problem
+        elif f_str == "2*t*exp(-4*t)":
+            return 2/(s + 4)**2
+        elif f_str == "t*exp(-t)":
+            return 1/(s + 1)**2
+        elif f_str == "t*exp(-2*t)":
+            return 1/(s + 2)**2
+        elif f_str == "t*exp(-3*t)":
+            return 1/(s + 3)**2
+        elif f_str == "t*exp(-4*t)":
+            return 1/(s + 4)**2
+        elif f_str == "t*exp(-a*t)":
+            a = sp.Symbol('a')
+            return 1/(s + a)**2
         
         # Spezielle String-Patterns
         if f_str == "exp(-2*t)":
@@ -599,6 +644,41 @@ class LaplaceTransformModule(BaseModule):
                 except:
                     pass
         
+        # t*exp(-a*t) Pattern - für das gemeldete Problem
+        t_exp_pattern = re.match(r'(\d*)\*?t\*exp\((-?\w*\*?t)\)', f_str)
+        if t_exp_pattern:
+            coeff_str = t_exp_pattern.group(1)
+            exp_arg = t_exp_pattern.group(2)
+            
+            # Koeffizient bestimmen
+            coeff = 1
+            if coeff_str and coeff_str.isdigit():
+                coeff = int(coeff_str)
+            
+            # Exponential-Parameter bestimmen
+            if exp_arg == '-t':
+                return coeff/(s + 1)**2
+            elif exp_arg == '-2*t':
+                return coeff/(s + 2)**2
+            elif exp_arg == '-3*t':
+                return coeff/(s + 3)**2
+            elif exp_arg == '-4*t':
+                return coeff/(s + 4)**2
+            elif exp_arg == '-a*t':
+                a = sp.Symbol('a')
+                return coeff/(s + a)**2
+            elif exp_arg.startswith('-') and exp_arg.endswith('*t'):
+                try:
+                    a_str = exp_arg[1:-2]  # Entferne '-' und '*t'
+                    if a_str.isdigit():
+                        a = int(a_str)
+                        return coeff/(s + a)**2
+                    else:
+                        a = sp.Symbol(a_str)
+                        return coeff/(s + a)**2
+                except:
+                    pass
+        
         # Weitere häufige Fälle mit symbolischer Erkennung
         try:
             patterns = {
@@ -634,7 +714,7 @@ class LaplaceTransformModule(BaseModule):
         t, s = sp.symbols('t s')
         
         # Laplace-Funktion parsen
-        F_s = sp.sympify(laplace_str)
+        F_s = safe_sympify(laplace_str, {'t': t, 's': s}, test_laplace=False)
         
         self.logger.add_step(
             "Gegeben",
@@ -699,8 +779,8 @@ class LaplaceTransformModule(BaseModule):
         s = sp.Symbol('s')
         
         # Polynome parsen
-        numerator = sp.sympify(num_str)
-        denominator = sp.sympify(den_str)
+        numerator = safe_sympify(num_str, {'s': s}, test_laplace=False)
+        denominator = safe_sympify(den_str, {'s': s}, test_laplace=False)
         
         G_s = numerator / denominator
         
