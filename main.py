@@ -19,6 +19,7 @@ from src.modules.laplace_transform import LaplaceTransformModule
 from src.modules.transfer_elements import TransferElementsModule
 from src.modules.block_diagram import BlockDiagramModule
 from src.modules.advanced_transfer_functions import AdvancedTransferFunctionModule
+from src.modules.frequency_response import FrequencyResponseModule
 from utils.display_utils import display_step_by_step, display_latex
 from utils.calculation_logger import CalculationLogger
 
@@ -46,7 +47,8 @@ def main():
         "Laplace-Transformation": LaplaceTransformModule(),
         "Übertragungsglieder": TransferElementsModule(),
         "Blockschaltbild-Umformung": BlockDiagramModule(),
-        "Erweiterte Übertragungsfunktionen": AdvancedTransferFunctionModule()
+        "Erweiterte Übertragungsfunktionen": AdvancedTransferFunctionModule(),
+        "Frequenzgang-Analyse": FrequencyResponseModule()
     }
     
     selected_module = st.sidebar.selectbox(

@@ -4,7 +4,12 @@ SymPy String Conversion Utility
 ===============================
 
 Robuste String-zu-SymPy Konversion, die bekannte SymPy-Bugs umgeht,
-insbesondere bei Laplace-Transformationen.
+insbesondere bei Laplace-        # Negative Lookahead für geschützte Namen und sp.
+        protected_lookahead = r'(?!' + '|'.join(re.escape(p) for p in sorted_protected) + r')'
+        if sorted_protected:  # Nur wenn es geschützte Namen gibt
+            protected_lookahead = r'(?!' + '|'.join(re.escape(p) for p in sorted_protected) + r'|sp\.)'
+        else:
+            protected_lookahead = r'(?!sp\.)'ansformationen.
 
 Unterstützt alle gängigen mathematischen Funktionen und Symbole.
 """
@@ -82,6 +87,9 @@ class SafeSymPyConverter:
             t, s = sp.symbols('t s', real=True, positive=True)
             self.default_symbols = {'t': t, 's': s}
         else:
+            # Sicherheitsabfrage: Stelle sicher, dass es ein Dictionary ist
+            if not isinstance(default_symbols, dict):
+                raise TypeError(f"default_symbols muss ein Dictionary sein, erhalten: {type(default_symbols)}")
             self.default_symbols = default_symbols.copy()
     
     def _convert_to_python_syntax(self, expression_string: str) -> str:
@@ -94,9 +102,13 @@ class SafeSymPyConverter:
         Returns:
             Python-kompatible SymPy-Syntax
         """
-        result = expression_string
+        result = expression_string.strip()
         
-        # Funktionen ersetzen (längste zuerst, um Konflikte zu vermeiden)
+        # 1. Spezielle Fälle zuerst
+        # Potenzen: ^ sollte zu ** werden
+        result = result.replace('^', '**')
+        
+        # 2. Funktionen ersetzen (längste zuerst, um Konflikte zu vermeiden)
         sorted_functions = sorted(self.FUNCTION_MAPPINGS.items(), 
                                 key=lambda x: len(x[0]), reverse=True)
         
@@ -106,15 +118,126 @@ class SafeSymPyConverter:
             pattern = r'\b' + re.escape(func) + r'(?=\s*\()'  # Nur wenn gefolgt von (
             result = re.sub(pattern, sp_func, result)
         
-        # Konstanten ersetzen (auch nur wenn alleinstehend)
+        # 3. Konstanten ersetzen (auch nur wenn alleinstehend)
         for const, sp_const in self.CONSTANT_MAPPINGS.items():
             pattern = r'\b' + re.escape(const) + r'\b(?!\w)'  # Nicht Teil eines längeren Worts
             result = re.sub(pattern, sp_const, result)
         
-        # Spezielle Fälle
-        # Potenzen: ** ist bereits Python-kompatibel
-        # Aber ^ sollte zu ** werden
-        result = result.replace('^', '**')
+        # 4. Automatische Multiplikationserkennung hinzufügen (NACH Funktionserkennung!)
+        result = self._add_implicit_multiplication(result)
+        
+        return result
+    
+    def _add_implicit_multiplication(self, expression: str) -> str:
+        """
+        Fügt automatisch Multiplikationszeichen (*) zwischen Ausdrücken hinzu.
+        
+        Erkennt Fälle wie:
+        - 2s → 2*s
+        - 3sp.sin(x) → 3*sp.sin(x)  
+        - (s+1)(s+2) → (s+1)*(s+2)
+        - 2(s+1) → 2*(s+1)
+        - s(t-1) → s*(t-1)
+        
+        Args:
+            expression: Mathematischer Ausdruck (nach Funktionskonversion)
+            
+        Returns:
+            Ausdruck mit expliziten Multiplikationszeichen
+        """
+        result = expression.strip()
+        
+        # Geschützte Symbole (längere Namen die nicht getrennt werden sollen)
+        protected_symbols = ['omega', 'alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 
+                           'eta', 'theta', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'rho', 
+                           'sigma', 'tau', 'phi', 'chi', 'psi', 'Omega', 'Alpha', 'Beta',
+                           'Gamma', 'Delta', 'Epsilon', 'Zeta', 'Eta', 'Theta', 'Kappa',
+                           'Lambda', 'Mu', 'Nu', 'Xi', 'Rho', 'Sigma', 'Tau', 'Phi', 
+                           'Chi', 'Psi']
+        
+        # Sortiere nach Länge (längste zuerst) 
+        sorted_protected = sorted(protected_symbols, key=len, reverse=True)
+        
+        # Pattern-basierte Ersetzungen (vorsichtige Reihenfolge)
+        patterns = [
+            # 1. Nummer vor Klammer: 2( → 2*(
+            (r'(\d+)\s*(\()', r'\1*\2'),
+            
+            # 2. Klammer vor Klammer: )( → )*(  
+            (r'(\))\s*(\()', r'\1*\2'),
+            
+            # 3. Klammer vor Symbol/Nummer: )s → )*s, )2 → )*2
+            (r'(\))\s*([a-zA-Z_]\w*)', r'\1*\2'),
+            (r'(\))\s*(\d+)', r'\1*\2'),
+            
+            # 4. Symbol vor Klammer: s( → s*(, aber NICHT sp.sin( → sp.*sin(
+            (r'(?<!sp\.)([a-zA-Z_]\w*)\s*(\()', r'\1*\2'),
+        ]
+        
+        for pattern, replacement in patterns:
+            result = re.sub(pattern, replacement, result)
+        
+        # 5. Nummer vor sp.Funktionen: 2sp.sin → 2*sp.sin
+        # Erkenne sp.funktionsname und füge * davor ein wenn Nummer voransteht
+        sp_function_pattern = r'(\d+)\s*(sp\.[a-zA-Z_]\w*)'
+        result = re.sub(sp_function_pattern, r'\1*\2', result)
+        
+        # 6. Nummer vor geschützten Symbolen: 5omega → 5*omega
+        for symbol in sorted_protected:
+            pattern = r'(\d+)\s*(' + re.escape(symbol) + r')(?![a-zA-Z0-9_])'
+            result = re.sub(pattern, r'\1*\2', result)
+        
+        # 7. Nummer vor einfachen Symbolen: 2s → 2*s
+        # Negative Lookahead für geschützte Namen und sp.
+        protected_lookahead = '(?!' + '|'.join(re.escape(p) for p in sorted_protected) + r'|sp\.)'
+        simple_symbol_pattern = r'(\d+)\s*([a-zA-Z_]\w*)' + protected_lookahead
+        
+        def replace_simple_symbols(match):
+            number = match.group(1)
+            symbol = match.group(2)
+            
+            # Doppelcheck: Stelle sicher, dass es kein geschütztes Symbol ist
+            if symbol in protected_symbols:
+                return match.group(0)
+                
+            return f'{number}*{symbol}'
+        
+        result = re.sub(simple_symbol_pattern, replace_simple_symbols, result)
+        
+        # 8. Leerzeichen zwischen Symbolen: omega s → omega*s
+        # Aber NICHT bei sp.funktionen oder Operatoren
+        space_pattern = r'([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*)'
+        
+        def replace_spaces(match):
+            sym1 = match.group(1)
+            sym2 = match.group(2)
+            
+            # Nicht ersetzen bei sp.Funktionen oder Operatoren
+            keywords = ['and', 'or', 'not', 'in', 'is', 'if', 'else', 'elif', 'for', 'while']
+            if (sym1.startswith('sp') or sym2.startswith('sp') or 
+                sym1 in keywords or sym2 in keywords):
+                return match.group(0)
+                
+            return f'{sym1}*{sym2}'
+        
+        result = re.sub(space_pattern, replace_spaces, result)
+        
+        # 9. Einzelne Buchstaben nebeneinander: st → s*t
+        # Aber NICHT wenn Teil von geschützten Namen oder sp.
+        single_char_pattern = r'(?<!sp\.)(?<![a-zA-Z])([a-zA-Z])([a-zA-Z])(?![a-zA-Z])'
+        
+        def replace_single_chars(match):
+            char1 = match.group(1)
+            char2 = match.group(2)
+            combined = char1 + char2
+            
+            # Prüfe ob Kombination geschützt ist
+            if any(protected.startswith(combined) for protected in protected_symbols):
+                return match.group(0)
+                
+            return f'{char1}*{char2}'
+        
+        result = re.sub(single_char_pattern, replace_single_chars, result)
         
         return result
     
@@ -246,9 +369,18 @@ def safe_sympify(expression_string: str,
     Returns:
         SymPy expression
     """
+    # Sicherheitsabfrage für symbols Parameter
+    if symbols is not None and not isinstance(symbols, dict):
+        error_msg = f"symbols muss ein Dictionary sein, erhalten: {type(symbols)}. Wert: {symbols}"
+        raise TypeError(error_msg)
+    
     if symbols:
-        converter = SafeSymPyConverter(symbols)
-        return converter.safe_sympify(expression_string, test_laplace=test_laplace)
+        try:
+            converter = SafeSymPyConverter(symbols)
+            result = converter.safe_sympify(expression_string, test_laplace=test_laplace)
+            return result
+        except Exception as conv_safe_error:
+            raise
     else:
         return _default_converter.safe_sympify(expression_string, test_laplace=test_laplace)
 
