@@ -5,10 +5,37 @@ LTI-Systeme und Zustandsraumdarstellung
 import streamlit as st
 import sympy as sp
 import numpy as np
-from modules.base_module import BaseModule
-from utils.display_utils import display_step_by_step, display_latex, display_matrix, plot_system_response
-from utils.safe_sympify import safe_sympify
-import control
+from .base_module import BaseModule
+
+try:
+    from src.utils.display_utils import display_step_by_step, display_latex, display_matrix, plot_system_response
+    from src.utils.safe_sympify import safe_sympify
+except ImportError:
+    # Fallback functions
+    def display_step_by_step(steps):
+        for step_name, step_content in steps:
+            st.markdown(f"**{step_name}:**")
+            st.latex(step_content)
+    
+    def display_latex(content):
+        st.latex(content)
+        
+    def display_matrix(matrix, title="Matrix"):
+        st.markdown(f"**{title}:**")
+        st.latex(sp.latex(matrix))
+        
+    def plot_system_response(*args, **kwargs):
+        st.info("Plotting nicht verfügbar")
+        
+    def safe_sympify(expr, symbols_dict=None):
+        if symbols_dict is None:
+            symbols_dict = {}
+        return sp.sympify(expr, locals=symbols_dict)
+
+try:
+    import control
+except ImportError:
+    control = None
 
 class LTISystemsModule(BaseModule):
     """Modul für LTI-Systeme und Zustandsraumdarstellung"""

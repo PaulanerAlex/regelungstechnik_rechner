@@ -20,8 +20,20 @@ from src.modules.transfer_elements import TransferElementsModule
 from src.modules.block_diagram import BlockDiagramModule
 from src.modules.advanced_transfer_functions import AdvancedTransferFunctionModule
 from src.modules.frequency_response import FrequencyResponseModule
-from utils.display_utils import display_step_by_step, display_latex
-from utils.calculation_logger import CalculationLogger
+from src.modules.transfer_function_analysis import TransferFunctionAnalysisModule
+
+try:
+    from src.utils.display_utils import display_step_by_step, display_latex
+    from src.utils.calculation_logger import CalculationLogger
+except ImportError:
+    # Fallback functions
+    def display_step_by_step(steps):
+        pass
+    def display_latex(content):
+        pass
+    class CalculationLogger:
+        def __init__(self):
+            pass
 
 def main():
     st.set_page_config(
@@ -41,6 +53,7 @@ def main():
     st.sidebar.title("Themen")
     
     modules = {
+        "🎯 Übertragungsfunktions-Analyse": TransferFunctionAnalysisModule(),
         "LTI-Systeme & Zustandsraumdarstellung": LTISystemsModule(),
         "Zustandstransformation": StateTransformationModule(),
         "Linearisierung": LinearizationModule(),
