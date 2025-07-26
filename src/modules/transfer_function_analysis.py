@@ -77,14 +77,15 @@ class TransferFunctionAnalysisModule(BaseModule):
         # Tab-basierte Analyse-Organisation
         if 'tf_parsed' in st.session_state and st.session_state.tf_parsed is not None:
             
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
                 "🎯 Komplettanalyse",
                 "📊 Pol-Nullstellen", 
                 "📈 Frequenzgang",
                 "🔄 Nyquist",
                 "🌿 Wurzelortskurve",
                 "⚖️ Stabilität",
-                "📍 Ortskurve"
+                "📍 Ortskurve",
+                "⚖️ Vergleichsanalyse"
             ])
             
             with tab1:
@@ -107,6 +108,9 @@ class TransferFunctionAnalysisModule(BaseModule):
             
             with tab7:
                 self.ortskurve_analysis()
+            
+            with tab8:
+                self.comparison_analysis()
     
     def _transfer_function_input(self):
         """Zentrale Eingabe für Übertragungsfunktionen mit Session State Management"""
@@ -245,6 +249,7 @@ class TransferFunctionAnalysisModule(BaseModule):
         with col2:
             show_frequency = st.checkbox("📈 Frequenzgang (Bode)", value=True, key='show_frequency_complete')
             show_nyquist = st.checkbox("🔄 Nyquist-Diagramm", value=True, key='show_nyquist_complete')
+            show_asymptotic_complete = st.checkbox("📐 Asymptotische Bode-Näherung", value=False, key='show_asymptotic_complete')
         
         with col3:
             show_stability = st.checkbox("⚖️ Stabilitätsanalyse", value=True, key='show_stability_complete')
@@ -270,7 +275,7 @@ class TransferFunctionAnalysisModule(BaseModule):
             if show_frequency:
                 st.markdown("---")
                 st.markdown("### 📈 Bode-Diagramm")
-                self._create_bode_plot(G_s, s, omega)
+                self._create_bode_plot(G_s, s, omega, show_asymptotic_complete)
             
             # Nyquist
             if show_nyquist:
@@ -361,9 +366,59 @@ class TransferFunctionAnalysisModule(BaseModule):
             num = sp.numer(G_s)
             den = sp.denom(G_s)
             
-            # Pole und Nullstellen berechnen
-            poles = sp.solve(den, s)
-            zeros = sp.solve(num, s)
+            # Debug-Ausgaben
+            st.markdown("##### 🔍 Debug-Informationen")
+            with st.expander("System-Polynome anzeigen"):
+                st.write(f"**Zählerpolynom (Numerator):** {num}")
+                st.write(f"**Nennerpolynom (Denominator):** {den}")
+            
+            # Pole und Nullstellen berechnen - robustere Methode
+            try:
+                poles = sp.solve(den, s)
+                if not poles:  # Falls solve() leer zurückgibt, versuche alternatives Verfahren
+                    # Versuche Faktorisierung
+                    den_factored = sp.factor(den)
+                    st.write(f"Faktorisierter Nenner: {den_factored}")
+                    
+                    # Extrahiere Pole aus Faktoren
+                    if den_factored != den:
+                        poles = sp.solve(den_factored, s)
+                    
+                    # Falls immer noch leer, verwende numerische Methode
+                    if not poles:
+                        # Konvertiere zu numpy Polynom-Koeffizienten
+                        den_poly = sp.Poly(den, s)
+                        coeffs = [float(c) for c in den_poly.all_coeffs()]
+                        if len(coeffs) > 1:
+                            numerical_poles = np.roots(coeffs)
+                            poles = [sp.sympify(complex(p)) for p in numerical_poles]
+                        
+            except Exception as e:
+                st.error(f"Fehler bei Pol-Berechnung: {e}")
+                poles = []
+            
+            try:
+                zeros = sp.solve(num, s)
+                if not zeros:  # Fallback für Nullstellen
+                    num_factored = sp.factor(num)
+                    if num_factored != num:
+                        zeros = sp.solve(num_factored, s)
+                    
+                    # Numerische Methode für Nullstellen
+                    if not zeros:
+                        num_poly = sp.Poly(num, s)
+                        coeffs = [float(c) for c in num_poly.all_coeffs()]
+                        if len(coeffs) > 1:
+                            numerical_zeros = np.roots(coeffs)
+                            zeros = [sp.sympify(complex(z)) for z in numerical_zeros]
+                            
+            except Exception as e:
+                st.error(f"Fehler bei Nullstellen-Berechnung: {e}")
+                zeros = []
+            
+            # Debug-Ausgabe der gefundenen Werte
+            st.write(f"**Gefundene Pole:** {len(poles)}")
+            st.write(f"**Gefundene Nullstellen:** {len(zeros)}")
             
             # Anzeige der Ergebnisse in Spalten
             col1, col2 = st.columns(2)
@@ -500,9 +555,30 @@ class TransferFunctionAnalysisModule(BaseModule):
             num = sp.numer(G_s)
             den = sp.denom(G_s)
             
-            # Pole und Nullstellen berechnen
-            poles = sp.solve(den, s)
-            zeros = sp.solve(num, s)
+            # Pole und Nullstellen berechnen - robuste Methode
+            try:
+                poles = sp.solve(den, s)
+                if not poles:
+                    # Fallback: numerische Methode
+                    den_poly = sp.Poly(den, s)
+                    coeffs = [float(c) for c in den_poly.all_coeffs()]
+                    if len(coeffs) > 1:
+                        numerical_poles = np.roots(coeffs)
+                        poles = [sp.sympify(complex(p)) for p in numerical_poles]
+            except:
+                poles = []
+            
+            try:
+                zeros = sp.solve(num, s)
+                if not zeros:
+                    # Fallback: numerische Methode
+                    num_poly = sp.Poly(num, s)
+                    coeffs = [float(c) for c in num_poly.all_coeffs()]
+                    if len(coeffs) > 1:
+                        numerical_zeros = np.roots(coeffs)
+                        zeros = [sp.sympify(complex(z)) for z in numerical_zeros]
+            except:
+                zeros = []
             
             # Plot erstellen
             fig = go.Figure()
@@ -634,7 +710,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 )
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="pole_zero_plot")
             
         except Exception as e:
             st.error(f"Fehler beim Erstellen des Pol-Nullstellen-Diagramms: {e}")
@@ -763,6 +839,7 @@ class TransferFunctionAnalysisModule(BaseModule):
             show_bode = st.checkbox("📊 Bode-Diagramm", value=True, key='show_bode_freq')
             show_nyquist = st.checkbox("🔄 Nyquist-Plot", value=True, key='show_nyquist_freq')
             show_magnitude_phase = st.checkbox("📈 Getrennte Mag/Phase", value=False, key='show_magnitude_phase_freq')
+            show_asymptotic = st.checkbox("📐 Asymptotische Näherung (Knick-Approximation)", value=True, key='show_asymptotic_freq')
         
         with col_settings3:
             st.markdown("**Zusatzanalyse:**")
@@ -812,7 +889,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 if show_bode:
                     st.markdown("---")
                     st.markdown("### 📊 Bode-Diagramm")
-                    self._create_bode_plot_detailed(omega_clean, magnitude_db, phase_deg)
+                    self._create_bode_plot_detailed(omega_clean, magnitude_db, phase_deg, G_s, s, show_asymptotic)
                 
                 if show_nyquist:
                     st.markdown("---")
@@ -828,7 +905,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 if show_margins:
                     st.markdown("---")
                     st.markdown("### 📏 Stabilitätsreserven")
-                    self._analyze_stability_margins_detailed(omega_clean, magnitude_db, phase_deg)
+                    self._analyze_stability_margins_detailed(omega_clean, magnitude_db, phase_deg, G_s, s)
                 
                 if show_bandwidth:
                     st.markdown("---")
@@ -1063,39 +1140,64 @@ class TransferFunctionAnalysisModule(BaseModule):
     def _determine_frequency_range(self, G_s, s):
         """Bestimme automatisch einen sinnvollen Frequenzbereich"""
         try:
-            # Pole extrahieren
-            poles = sp.solve(sp.denom(G_s), s)
+            # Debug: Ausgabe der Übertragungsfunktion
+            st.write(f"Debug: G(s) = {G_s}")
             
-            if not poles:
-                return 0.01, 100.0  # Standard-Bereich
-            
-            # Charakteristische Frequenzen bestimmen
+            # Charakteristische Frequenzen sammeln
             char_freqs = []
-            for pole in poles:
-                pole_val = complex(pole.evalf())
-                if pole_val.real < 0:  # Nur stabile Pole
-                    char_freqs.append(abs(pole_val))
             
-            # Nullstellen hinzufügen
-            zeros = sp.solve(sp.numer(G_s), s)
-            for zero in zeros:
-                zero_val = complex(zero.evalf())
-                char_freqs.append(abs(zero_val))
-            
-            if char_freqs:
-                min_freq = min(char_freqs) / 100  # Eine Dekade unter niedrigster Freq
-                max_freq = max(char_freqs) * 100  # Eine Dekade über höchster Freq
+            # Pole extrahieren
+            den = sp.denom(G_s)
+            try:
+                poles = sp.solve(den, s)
+                st.write(f"Debug: Gefundene Pole: {poles}")
                 
-                # Sinnvolle Grenzen
-                min_freq = max(min_freq, 0.001)
-                max_freq = min(max_freq, 10000)
+                for pole in poles:
+                    pole_val = complex(pole.evalf())
+                    # Nur Pole mit Re < 0 und |pole| > 0.001 berücksichtigen
+                    if pole_val.real < 0 and abs(pole_val) > 0.001:
+                        char_freqs.append(abs(pole_val))
+                        st.write(f"Debug: Charakteristische Frequenz aus Pol {pole_val}: {abs(pole_val):.3f}")
+                        
+            except Exception as e:
+                st.write(f"Debug: Pol-Extraktion fehlgeschlagen: {e}")
+            
+            # Nullstellen extrahieren
+            num = sp.numer(G_s)
+            try:
+                zeros = sp.solve(num, s)
+                st.write(f"Debug: Gefundene Nullstellen: {zeros}")
+                
+                for zero in zeros:
+                    zero_val = complex(zero.evalf())
+                    if abs(zero_val) > 0.001:
+                        char_freqs.append(abs(zero_val))
+                        st.write(f"Debug: Charakteristische Frequenz aus Nullstelle {zero_val}: {abs(zero_val):.3f}")
+                        
+            except Exception as e:
+                st.write(f"Debug: Nullstellen-Extraktion fehlgeschlagen: {e}")
+            
+            # Bestimme Frequenzbereich
+            if char_freqs:
+                min_char_freq = min(char_freqs)
+                max_char_freq = max(char_freqs)
+                
+                # Verbesserte Bereichsbestimmung: weniger extreme Erweiterung
+                min_freq = max(min_char_freq / 10, 0.01)   # 1 Dekade darunter, min 0.01
+                max_freq = min(max_char_freq * 10, 1000)   # 1 Dekade darüber, max 1000
+                
+                st.write(f"Debug: Char. Freqs: {char_freqs}")
+                st.write(f"Debug: Bereich: {min_freq:.3f} - {max_freq:.1f} rad/s")
                 
                 return min_freq, max_freq
             else:
+                st.write("Debug: Keine charakteristischen Frequenzen, verwende Standard")
+                # Standard für Systeme ohne erkennbare charakteristische Frequenzen
                 return 0.01, 100.0
                 
-        except Exception:
-                return 0.01, 100.0  # Fallback
+        except Exception as e:
+            st.write(f"Debug: Fehler bei Frequenzbereich-Bestimmung: {e}")
+            return 0.01, 100.0
     
     def _create_ortskurve_plot(self, G_s, s, omega, freq_min, freq_max, num_points,
                               show_freq_markers, show_unit_circle, show_grid,
@@ -1284,7 +1386,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 )
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="ortskurve_plot")
             
             # Zusätzliche Ortskurven-Analyse
             self._ortskurve_additional_analysis(omega_clean, real_vals, imag_vals, G_s, s)
@@ -1389,7 +1491,420 @@ class TransferFunctionAnalysisModule(BaseModule):
             else:
                 st.success("✅ Sicherer Abstand zum kritischen Punkt")
     
-    def _create_bode_plot_detailed(self, omega_vals, magnitude_db, phase_deg):
+    def _create_bode_plot_detailed(self, omega_vals, magnitude_db, phase_deg, G_s, s, show_asymptotic=False):
+        """Erstelle detailliertes Bode-Diagramm mit exakter und asymptotischer Darstellung"""
+        
+        # Erstelle Subplots
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=('Amplitudengang |G(jω)| [dB]', 'Phasengang ∠G(jω) [°]'),
+            vertical_spacing=0.08,
+            shared_xaxes=True
+        )
+        
+        # Exakte Kurven (Hauptdarstellung)
+        fig.add_trace(
+            go.Scatter(
+                x=omega_vals, y=magnitude_db,
+                mode='lines',
+                name='|G(jω)| exakt',
+                line=dict(color='blue', width=2),
+                hovertemplate='ω: %{x:.3f} rad/s<br>|G|: %{y:.1f} dB<extra></extra>'
+            ),
+            row=1, col=1
+        )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=omega_vals, y=phase_deg,
+                mode='lines',
+                name='∠G(jω) exakt',
+                line=dict(color='red', width=2),
+                hovertemplate='ω: %{x:.3f} rad/s<br>∠G: %{y:.1f}°<extra></extra>'
+            ),
+            row=2, col=1
+        )
+        
+        # Asymptotische Näherung hinzufügen
+        if show_asymptotic:
+            try:
+                # Berechne asymptotische Approximation
+                omega_asymp, mag_asymp, phase_asymp = self._calculate_asymptotic_bode(G_s, s, omega_vals)
+                
+                if omega_asymp is not None and len(omega_asymp) > 0:
+                    # Asymptotische Amplitude
+                    fig.add_trace(
+                        go.Scatter(
+                            x=omega_asymp, y=mag_asymp,
+                            mode='lines',
+                            name='|G(jω)| asymptotisch',
+                            line=dict(color='lightblue', width=2, dash='dash'),
+                            hovertemplate='ω: %{x:.3f} rad/s<br>|G|_asymp: %{y:.1f} dB<extra></extra>'
+                        ),
+                        row=1, col=1
+                    )
+                    
+                    # Asymptotische Phase
+                    fig.add_trace(
+                        go.Scatter(
+                            x=omega_asymp, y=phase_asymp,
+                            mode='lines',
+                            name='∠G(jω) asymptotisch',
+                            line=dict(color='lightcoral', width=2, dash='dash'),
+                            hovertemplate='ω: %{x:.3f} rad/s<br>∠G_asymp: %{y:.1f}°<extra></extra>'
+                        ),
+                        row=2, col=1
+                    )
+                    
+                    # Vergleich der Stabilitätsreserven
+                    st.markdown("#### 📊 Vergleich: Exakt vs. Asymptotisch")
+                    self._compare_stability_margins(omega_vals, magnitude_db, phase_deg, omega_asymp, mag_asymp, phase_asymp)
+                
+            except Exception as e:
+                st.warning(f"⚠️ Asymptotische Approximation konnte nicht berechnet werden: {e}")
+        
+        # Referenzlinien
+        fig.add_hline(y=0, line_dash="dash", line_color="gray", 
+                     annotation_text="0 dB", row=1, col=1)
+        fig.add_hline(y=-3, line_dash="dot", line_color="orange", 
+                     annotation_text="-3 dB", row=1, col=1)
+        fig.add_hline(y=-180, line_dash="dash", line_color="gray",
+                     annotation_text="-180°", row=2, col=1)
+        fig.add_hline(y=-90, line_dash="dot", line_color="orange",
+                     annotation_text="-90°", row=2, col=1)
+        
+        # Layout konfigurieren
+        fig.update_xaxes(type="log", title_text="Frequenz ω [rad/s]", row=2, col=1)
+        fig.update_xaxes(type="log", row=1, col=1)
+        fig.update_yaxes(title_text="Magnitude [dB]", row=1, col=1)
+        fig.update_yaxes(title_text="Phase [°]", row=2, col=1)
+        
+        # Knickfrequenz-Marker hinzufügen
+        self._add_break_frequency_markers(fig, G_s, s, omega_vals, magnitude_db, phase_deg)
+        
+        fig.update_layout(
+            title="Bode-Diagramm" + (" - Exakt vs. Asymptotisch" if show_asymptotic else ""),
+            height=600,
+            showlegend=True,
+            hovermode='x unified'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True, key="bode_detailed_plot")
+        
+        # Wichtige Frequenzen markieren
+        self._mark_important_frequencies(omega_vals, magnitude_db, phase_deg, G_s, s)
+    
+    def _calculate_asymptotic_bode(self, G_s, s, omega_vals):
+        """Berechne asymptotische Bode-Approximation (Knick-Diagramm)"""
+        try:
+            # Extrahiere Faktoren der Übertragungsfunktion
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            
+            # Finde Pole und Nullstellen
+            poles = sp.solve(den, s)
+            zeros = sp.solve(num, s)
+            
+            # DC-Verstärkung
+            try:
+                K_dc = float(G_s.subs(s, 0))
+            except:
+                # Falls Pol bei s=0, verwende Grenzwert
+                K_dc = 1.0
+            
+            # Charakteristische Frequenzen (Knickpunkte)
+            break_freqs = []
+            break_types = []  # 'zero' oder 'pole'
+            break_orders = []  # Ordnung (Vielfachheit)
+            
+            # Pole verarbeiten
+            for pole in poles:
+                pole_val = complex(pole.evalf())
+                if abs(pole_val.imag) < 1e-10:  # Reeller Pol
+                    if pole_val.real < 0:  # Stabiler Pol
+                        break_freq = abs(pole_val.real)
+                        if break_freq > 0:
+                            break_freqs.append(break_freq)
+                            break_types.append('pole')
+                            break_orders.append(1)
+                else:  # Komplexer Pol
+                    if pole_val.real < 0:  # Stabiler komplexer Pol
+                        break_freq = abs(pole_val)  # Eigenfrequenz
+                        if break_freq > 0:
+                            break_freqs.append(break_freq)
+                            break_types.append('complex_pole')
+                            break_orders.append(2)  # Komplexes Paar
+            
+            # Nullstellen verarbeiten
+            for zero in zeros:
+                zero_val = complex(zero.evalf())
+                if abs(zero_val.imag) < 1e-10:  # Reelle Nullstelle
+                    break_freq = abs(zero_val.real)
+                    if break_freq > 0:
+                        break_freqs.append(break_freq)
+                        break_types.append('zero')
+                        break_orders.append(1)
+                else:  # Komplexe Nullstelle
+                    break_freq = abs(zero_val)
+                    if break_freq > 0:
+                        break_freqs.append(break_freq)
+                        break_types.append('complex_zero')
+                        break_orders.append(2)
+            
+            # Sortiere nach Frequenz
+            sorted_data = sorted(zip(break_freqs, break_types, break_orders))
+            break_freqs = [x[0] for x in sorted_data]
+            break_types = [x[1] for x in sorted_data]
+            break_orders = [x[2] for x in sorted_data]
+            
+            # Erweitere Frequenzbereich für Asymptoten
+            omega_min = min(omega_vals) / 10
+            omega_max = max(omega_vals) * 10
+            
+            # Erstelle asymptotische Frequenzpunkte
+            omega_asymp_list = [omega_min]
+            
+            # Füge Knickpunkte hinzu
+            for freq in break_freqs:
+                if omega_min <= freq <= omega_max:
+                    omega_asymp_list.extend([freq * 0.999, freq, freq * 1.001])
+            
+            omega_asymp_list.append(omega_max)
+            omega_asymp = np.array(sorted(set(omega_asymp_list)))
+            
+            # Berechne asymptotische Amplitude
+            mag_asymp = np.zeros_like(omega_asymp)
+            
+            # DC-Verstärkung (Startwert)
+            if K_dc != 0:
+                dc_gain_db = 20 * np.log10(abs(K_dc))
+            else:
+                dc_gain_db = 0
+            
+            # Systemordnung für Hochfrequenz-Asymptote
+            num_degree = sp.degree(num, s) if sp.degree(num, s) is not None else 0
+            den_degree = sp.degree(den, s) if sp.degree(den, s) is not None else 0
+            system_order = int(den_degree) - int(num_degree)
+            
+            for i, omega in enumerate(omega_asymp):
+                # Starte mit DC-Verstärkung
+                current_gain_db = dc_gain_db
+                
+                # Addiere Beiträge aller Knickpunkte
+                for freq, btype, order in zip(break_freqs, break_types, break_orders):
+                    if omega > freq:  # Oberhalb der Knickfrequenz
+                        if 'pole' in btype:
+                            # Pol: -20*order dB/Dekade
+                            current_gain_db -= 20 * order * np.log10(omega / freq)
+                        elif 'zero' in btype:
+                            # Nullstelle: +20*order dB/Dekade
+                            current_gain_db += 20 * order * np.log10(omega / freq)
+                
+                mag_asymp[i] = current_gain_db
+            
+            # Berechne asymptotische Phase
+            phase_asymp = np.zeros_like(omega_asymp)
+            
+            for i, omega in enumerate(omega_asymp):
+                current_phase = 0
+                
+                # DC-Phasenbeitrag
+                if K_dc < 0:
+                    current_phase += 180
+                
+                # Beiträge der Knickpunkte
+                for freq, btype, order in zip(break_freqs, break_types, break_orders):
+                    if 'pole' in btype:
+                        if 'complex' in btype:
+                            # Komplexer Pol: Schneller Phasenabfall bei Knickfrequenz
+                            if omega < freq / 10:
+                                phase_contrib = 0
+                            elif omega > freq * 10:
+                                phase_contrib = -180 * order
+                            else:
+                                # Vereinfachte Knick-Approximation
+                                phase_contrib = -90 * order * np.log10(omega / (freq / 10)) / np.log10(100)
+                        else:
+                            # Reeller Pol: -90°/Pol oberhalb Knickfrequenz
+                            if omega > freq:
+                                phase_contrib = -90 * order
+                            else:
+                                phase_contrib = 0
+                    elif 'zero' in btype:
+                        if 'complex' in btype:
+                            # Komplexe Nullstelle
+                            if omega < freq / 10:
+                                phase_contrib = 0
+                            elif omega > freq * 10:
+                                phase_contrib = 180 * order
+                            else:
+                                phase_contrib = 90 * order * np.log10(omega / (freq / 10)) / np.log10(100)
+                        else:
+                            # Reelle Nullstelle: +90°/Nullstelle oberhalb Knickfrequenz
+                            if omega > freq:
+                                phase_contrib = 90 * order
+                            else:
+                                phase_contrib = 0
+                    
+                    current_phase += phase_contrib
+                
+                phase_asymp[i] = current_phase
+            
+            return omega_asymp, mag_asymp, phase_asymp
+            
+        except Exception as e:
+            st.error(f"Fehler bei asymptotischer Approximation: {e}")
+            return None, None, None
+    
+    def _compare_stability_margins(self, omega_exact, mag_exact, phase_exact, omega_asymp, mag_asymp, phase_asymp):
+        """Vergleiche Stabilitätsreserven zwischen exakter und asymptotischer Berechnung"""
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("##### 📊 Exakte Berechnung")
+            
+            # Amplitudenreserve (exakt)
+            phase_shifted = phase_exact + 180
+            phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+            
+            if len(phase_crossings) > 0:
+                idx = phase_crossings[0]
+                if idx < len(omega_exact) - 1:
+                    phase_crossover_freq = np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
+                                                   [omega_exact[idx], omega_exact[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_exact - phase_crossover_freq))
+                    gain_margin_exact = -mag_exact[freq_idx]
+                    
+                    st.metric("Amplitudenreserve", f"{gain_margin_exact:.1f} dB")
+                    st.write(f"Bei ω = {phase_crossover_freq:.3f} rad/s")
+                else:
+                    st.metric("Amplitudenreserve", "∞ (kein -180° Durchgang)")
+                    gain_margin_exact = float('inf')
+            else:
+                st.metric("Amplitudenreserve", "∞ (kein -180° Durchgang)")
+                gain_margin_exact = float('inf')
+            
+            # Phasenreserve (exakt)
+            zero_crossings = np.where(np.diff(np.signbit(mag_exact)))[0]
+            if len(zero_crossings) > 0:
+                idx = zero_crossings[0]
+                if idx < len(omega_exact) - 1:
+                    gain_crossover_freq = np.interp(0, [mag_exact[idx], mag_exact[idx+1]], 
+                                                  [omega_exact[idx], omega_exact[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_exact - gain_crossover_freq))
+                    phase_at_crossover = phase_exact[freq_idx]
+                    phase_margin_exact = 180 + phase_at_crossover
+                    
+                    st.metric("Phasenreserve", f"{phase_margin_exact:.1f}°")
+                    st.write(f"Bei ω = {gain_crossover_freq:.3f} rad/s")
+                else:
+                    st.metric("Phasenreserve", "N/A")
+                    phase_margin_exact = None
+            else:
+                st.metric("Phasenreserve", "N/A")
+                phase_margin_exact = None
+        
+        with col2:
+            st.markdown("##### 📐 Asymptotische Näherung")
+            
+            # Amplitudenreserve (asymptotisch)
+            phase_shifted_asymp = phase_asymp + 180
+            phase_crossings_asymp = np.where(np.diff(np.signbit(phase_shifted_asymp)))[0]
+            
+            if len(phase_crossings_asymp) > 0:
+                idx = phase_crossings_asymp[0]
+                if idx < len(omega_asymp) - 1:
+                    phase_crossover_freq_asymp = np.interp(0, [phase_shifted_asymp[idx], phase_shifted_asymp[idx+1]], 
+                                                         [omega_asymp[idx], omega_asymp[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_asymp - phase_crossover_freq_asymp))
+                    gain_margin_asymp = -mag_asymp[freq_idx]
+                    
+                    st.metric("Amplitudenreserve", f"{gain_margin_asymp:.1f} dB")
+                    st.write(f"Bei ω = {phase_crossover_freq_asymp:.3f} rad/s")
+                else:
+                    st.metric("Amplitudenreserve", "∞ (kein -180° Durchgang)")
+                    gain_margin_asymp = float('inf')
+            else:
+                st.metric("Amplitudenreserve", "∞ (kein -180° Durchgang)")
+                gain_margin_asymp = float('inf')
+            
+            # Phasenreserve (asymptotisch)
+            zero_crossings_asymp = np.where(np.diff(np.signbit(mag_asymp)))[0]
+            if len(zero_crossings_asymp) > 0:
+                idx = zero_crossings_asymp[0]
+                if idx < len(omega_asymp) - 1:
+                    gain_crossover_freq_asymp = np.interp(0, [mag_asymp[idx], mag_asymp[idx+1]], 
+                                                        [omega_asymp[idx], omega_asymp[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_asymp - gain_crossover_freq_asymp))
+                    phase_at_crossover_asymp = phase_asymp[freq_idx]
+                    phase_margin_asymp = 180 + phase_at_crossover_asymp
+                    
+                    st.metric("Phasenreserve", f"{phase_margin_asymp:.1f}°")
+                    st.write(f"Bei ω = {gain_crossover_freq_asymp:.3f} rad/s")
+                else:
+                    st.metric("Phasenreserve", "N/A")
+                    phase_margin_asymp = None
+            else:
+                st.metric("Phasenreserve", "N/A")
+                phase_margin_asymp = None
+        
+        # Unterschiede hervorheben
+        st.markdown("##### ⚖️ Vergleich der Methoden")
+        
+        diff_data = []
+        
+        # Amplitudenreserve-Unterschied
+        if gain_margin_exact != float('inf') and gain_margin_asymp != float('inf'):
+            gain_diff = abs(gain_margin_exact - gain_margin_asymp)
+            diff_data.append({
+                'Parameter': 'Amplitudenreserve',
+                'Exakt': f"{gain_margin_exact:.1f} dB",
+                'Asymptotisch': f"{gain_margin_asymp:.1f} dB",
+                'Unterschied': f"{gain_diff:.1f} dB"
+            })
+        else:
+            diff_data.append({
+                'Parameter': 'Amplitudenreserve',
+                'Exakt': "∞" if gain_margin_exact == float('inf') else f"{gain_margin_exact:.1f} dB",
+                'Asymptotisch': "∞" if gain_margin_asymp == float('inf') else f"{gain_margin_asymp:.1f} dB",
+                'Unterschied': "Methoden-abhängig"
+            })
+        
+        # Phasenreserve-Unterschied
+        if phase_margin_exact is not None and phase_margin_asymp is not None:
+            phase_diff = abs(phase_margin_exact - phase_margin_asymp)
+            diff_data.append({
+                'Parameter': 'Phasenreserve',
+                'Exakt': f"{phase_margin_exact:.1f}°",
+                'Asymptotisch': f"{phase_margin_asymp:.1f}°",
+                'Unterschied': f"{phase_diff:.1f}°"
+            })
+        else:
+            diff_data.append({
+                'Parameter': 'Phasenreserve',
+                'Exakt': "N/A" if phase_margin_exact is None else f"{phase_margin_exact:.1f}°",
+                'Asymptotisch': "N/A" if phase_margin_asymp is None else f"{phase_margin_asymp:.1f}°",
+                'Unterschied': "Methoden-abhängig"
+            })
+        
+        import pandas as pd
+        df_comparison = pd.DataFrame(diff_data)
+        st.dataframe(df_comparison, use_container_width=True)
+        
+        # Interpretationshinweise
+        st.markdown("##### 📋 Interpretationshinweise")
+        st.info("""
+        **Exakte Berechnung:** Berücksichtigt die tatsächlichen kontinuierlichen Kurvenverläufe.
+        **Asymptotische Näherung:** Verwendet idealisierte Knick-Approximationen (typisch in klassischer Regelungstechnik-Lehre).
+        
+        **Unterschiede entstehen durch:**
+        - Komplexe Pole (gedämpfte Schwingungen vs. ideale Knicke)
+        - Pol-Nullstellen-Dipole (werden asymptotisch oft vernachlässigt)
+        - Systeme mit Asymptoten statt echten Durchgängen bei 0dB/-180°
+        """)
+    
+    def _create_bode_plot_detailed_old(self, omega_vals, magnitude_db, phase_deg):
         """Erstelle detailliertes Bode-Diagramm"""
         
         # Erstelle Subplots
@@ -1447,9 +1962,9 @@ class TransferFunctionAnalysisModule(BaseModule):
             hovermode='x unified'
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="bode_simple_plot")
         
-        # Wichtige Frequenzen markieren
+        # Wichtige Frequenzen markieren (ohne G_s für alte Methode)
         self._mark_important_frequencies(omega_vals, magnitude_db, phase_deg)
     
     def _create_nyquist_plot_detailed(self, G_vals, omega_vals):
@@ -1528,55 +2043,279 @@ class TransferFunctionAnalysisModule(BaseModule):
             )
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="nyquist_plot")
         
         # Nyquist-Stabilitätsanalyse
         self._nyquist_stability_analysis(real_vals, imag_vals, omega_vals)
     
-    def _mark_important_frequencies(self, omega_vals, magnitude_db, phase_deg):
+    def _mark_important_frequencies(self, omega_vals, magnitude_db, phase_deg, G_s=None, s=None):
         """Markiere wichtige Frequenzen im Bode-Diagramm"""
         st.markdown("#### 🎯 Charakteristische Frequenzen")
+        
+        # Extrahiere Knickfrequenzen falls G_s verfügbar
+        break_frequencies = []
+        if G_s is not None and s is not None:
+            break_frequencies = self._extract_break_frequencies(G_s, s)
         
         col_freq1, col_freq2, col_freq3 = st.columns(3)
         
         with col_freq1:
-            # Eckfrequenz (0 dB Durchgang)
+            st.markdown("**Crossover-Frequenzen:**")
+            
+            # Finde 0 dB Durchgang
             zero_crossings = np.where(np.diff(np.signbit(magnitude_db)))[0]
             if len(zero_crossings) > 0:
                 idx = zero_crossings[0]
                 if idx < len(omega_vals) - 1:
-                    crossover_freq = np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
-                                              [omega_vals[idx], omega_vals[idx+1]])
-                    st.metric("🎯 Eckfrequenz", f"{crossover_freq:.3f} rad/s")
+                    gain_crossover = np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
+                                             [omega_vals[idx], omega_vals[idx+1]])
+                    st.metric("0 dB Durchgang", f"{gain_crossover:.3f} rad/s")
+                    st.write(f"= {gain_crossover/(2*np.pi):.3f} Hz")
                 else:
-                    st.metric("🎯 Eckfrequenz", "Nicht gefunden")
+                    st.metric("0 dB Durchgang", "Nicht im Bereich")
             else:
-                st.metric("🎯 Eckfrequenz", "Nicht gefunden")
+                st.metric("0 dB Durchgang", "Nicht gefunden")
+            
+            # Finde -180° Durchgang
+            phase_shifted = phase_deg + 180
+            phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+            if len(phase_crossings) > 0:
+                idx = phase_crossings[0]
+                if idx < len(omega_vals) - 1:
+                    phase_crossover = np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
+                                               [omega_vals[idx], omega_vals[idx+1]])
+                    st.metric("-180° Durchgang", f"{phase_crossover:.3f} rad/s")
+                    st.write(f"= {phase_crossover/(2*np.pi):.3f} Hz")
+                else:
+                    st.metric("-180° Durchgang", "Nicht im Bereich")
+            else:
+                st.metric("-180° Durchgang", "Nicht gefunden")
         
         with col_freq2:
-            # -3dB Frequenz (Bandbreite)
-            db_3_crossings = np.where(np.diff(np.signbit(magnitude_db + 3)))[0]
-            if len(db_3_crossings) > 0:
-                idx = db_3_crossings[0] 
-                if idx < len(omega_vals) - 1:
-                    bandwidth_freq = np.interp(-3, [magnitude_db[idx], magnitude_db[idx+1]], 
-                                              [omega_vals[idx], omega_vals[idx+1]])
-                    st.metric("📡 -3dB Frequenz", f"{bandwidth_freq:.3f} rad/s")
+            st.markdown("**Bandbreiten:**")
+            
+            # -3dB Bandbreite
+            dc_gain_db = magnitude_db[0]
+            cutoff_level = dc_gain_db - 3
+            below_cutoff = magnitude_db < cutoff_level
+            
+            if np.any(below_cutoff):
+                cutoff_idx = np.where(below_cutoff)[0][0]
+                if cutoff_idx > 0:
+                    bandwidth_3db = np.interp(cutoff_level, 
+                                            [magnitude_db[cutoff_idx-1], magnitude_db[cutoff_idx]],
+                                            [omega_vals[cutoff_idx-1], omega_vals[cutoff_idx]])
+                    st.metric("-3dB Bandbreite", f"{bandwidth_3db:.3f} rad/s")
+                    st.write(f"= {bandwidth_3db/(2*np.pi):.3f} Hz")
                 else:
-                    st.metric("📡 -3dB Frequenz", "Nicht gefunden")
+                    st.metric("-3dB Bandbreite", "> Max ω")
             else:
-                st.metric("📡 -3dB Frequenz", "Nicht gefunden")
+                st.metric("-3dB Bandbreite", "> Max ω")
+            
+            # Resonanzfrequenz (Peak)
+            max_gain_idx = np.argmax(magnitude_db)
+            resonance_freq = omega_vals[max_gain_idx]
+            resonance_gain = magnitude_db[max_gain_idx]
+            
+            st.metric("Resonanzfrequenz", f"{resonance_freq:.3f} rad/s")
+            st.write(f"Peak: {resonance_gain:.1f} dB")
         
         with col_freq3:
-            # Resonanzfrequenz (Maximum in Magnitude)
-            max_idx = np.argmax(magnitude_db)
-            resonance_freq = omega_vals[max_idx]
-            resonance_mag = magnitude_db[max_idx]
-            st.metric("⚡ Resonanzfrequenz", f"{resonance_freq:.3f} rad/s")
-            st.write(f"   Max: {resonance_mag:.1f} dB")
+            st.markdown("**Knickfrequenzen:**")
+            
+            if break_frequencies:
+                # Zeige die ersten Knickfrequenzen
+                for i, (freq, btype) in enumerate(break_frequencies[:4]):
+                    type_symbol = "🔴" if "pole" in btype else "🔵"
+                    type_name = "Pol" if "pole" in btype else "Nullst."
+                    if "complex" in btype:
+                        type_name += " (kx)"
+                    
+                    st.write(f"{type_symbol} {freq:.2f} rad/s ({type_name})")
+                
+                if len(break_frequencies) > 4:
+                    st.write(f"... und {len(break_frequencies)-4} weitere")
+            else:
+                st.write("Keine Knickfrequenzen identifiziert")
+        
+        # Zusätzliche Knickfrequenz-Tabelle
+        if break_frequencies:
+            st.markdown("#### 📊 Knickfrequenz-Übersicht")
+            
+            break_info = []
+            for freq, btype in break_frequencies:
+                if "pole" in btype:
+                    symbol = "🔴"
+                    desc = "Pol"
+                    effect_mag = "-20 dB/Dek"
+                    effect_phase = "-90°"
+                else:
+                    symbol = "🔵" 
+                    desc = "Nullstelle"
+                    effect_mag = "+20 dB/Dek"
+                    effect_phase = "+90°"
+                
+                if "complex" in btype:
+                    desc += " (komplex)"
+                    effect_mag = effect_mag.replace("20", "40")
+                    effect_phase = effect_phase.replace("90", "180")
+                
+                break_info.append({
+                    'Typ': f"{symbol} {desc}",
+                    'Frequenz [rad/s]': f"{freq:.3f}",
+                    'Frequenz [Hz]': f"{freq/(2*np.pi):.3f}",
+                    'Magnitude-Effekt': effect_mag,
+                    'Phasen-Effekt': effect_phase
+                })
+            
+    def _extract_break_frequencies(self, G_s, s):
+        """Extrahiere Knickfrequenzen aus der Übertragungsfunktion"""
+        try:
+            # Vereinfache die Übertragungsfunktion
+            G_s_simplified = sp.simplify(G_s)
+            
+            # Extrahiere Zähler und Nenner
+            num, den = sp.fraction(G_s_simplified)
+            
+            # Finde Nullstellen (Zähler)
+            zeros = sp.solve(num, s)
+            
+            # Finde Pole (Nenner)
+            poles = sp.solve(den, s)
+            
+            break_frequencies = []
+            
+            # Verarbeite Pole
+            for pole in poles:
+                if pole.is_real and pole.is_negative:
+                    # Reeller Pol: ω_b = |pole|
+                    break_freq = float(abs(pole))
+                    break_frequencies.append((break_freq, "pole_real"))
+                elif pole.is_real and pole == 0:
+                    # Pol bei s=0 (Integrator)
+                    continue
+                elif not pole.is_real:
+                    # Komplexer Pol: ω_b = |pole|
+                    try:
+                        break_freq = float(abs(pole))
+                        break_frequencies.append((break_freq, "pole_complex"))
+                    except:
+                        continue
+            
+            # Verarbeite Nullstellen
+            for zero in zeros:
+                if zero.is_real and zero.is_negative:
+                    # Reelle Nullstelle: ω_b = |zero|
+                    break_freq = float(abs(zero))
+                    break_frequencies.append((break_freq, "zero_real"))
+                elif zero.is_real and zero == 0:
+                    # Nullstelle bei s=0 (Differenzierer)
+                    continue
+                elif not zero.is_real:
+                    # Komplexe Nullstelle: ω_b = |zero|
+                    try:
+                        break_freq = float(abs(zero))
+                        break_frequencies.append((break_freq, "zero_complex"))
+                    except:
+                        continue
+            
+            # Sortiere nach Frequenz
+            break_frequencies.sort(key=lambda x: x[0])
+            
+            return break_frequencies
+            
+        except Exception as e:
+            st.warning(f"Knickfrequenz-Extraktion fehlgeschlagen: {e}")
+            return []
+    
+    def _add_break_frequency_markers(self, fig, G_s, s, omega_vals, magnitude_db, phase_deg):
+        """Füge Knickfrequenz-Marker zu den Bode-Diagrammen hinzu"""
+        try:
+            break_frequencies = self._extract_break_frequencies(G_s, s)
+            
+            if not break_frequencies:
+                return
+            
+            for freq, btype in break_frequencies:
+                # Prüfe ob Frequenz im dargestellten Bereich liegt
+                if freq < omega_vals[0] or freq > omega_vals[-1]:
+                    continue
+                
+                # Interpoliere Magnitude und Phase bei Knickfrequenz
+                freq_idx = np.argmin(np.abs(omega_vals - freq))
+                mag_at_break = magnitude_db[freq_idx]
+                phase_at_break = phase_deg[freq_idx]
+                
+                # Marker-Eigenschaften basierend auf Typ
+                if "pole" in btype:
+                    color = 'red'
+                    symbol = 'circle'
+                    name_prefix = "Pol"
+                else:
+                    color = 'blue' 
+                    symbol = 'square'
+                    name_prefix = "Nullstelle"
+                
+                if "complex" in btype:
+                    name_suffix = " (komplex)"
+                    size = 12
+                else:
+                    name_suffix = ""
+                    size = 10
+                
+                marker_name = f"{name_prefix}{name_suffix} @ {freq:.2f} rad/s"
+                
+                # Magnitude-Marker
+                fig.add_trace(
+                    go.Scatter(
+                        x=[freq], 
+                        y=[mag_at_break],
+                        mode='markers',
+                        marker=dict(
+                            symbol=symbol,
+                            size=size,
+                            color=color,
+                            line=dict(width=2, color='white')
+                        ),
+                        name=marker_name,
+                        showlegend=True,
+                        hovertemplate=f'{marker_name}<br>ω: {freq:.3f} rad/s<br>|G|: {mag_at_break:.1f} dB<extra></extra>'
+                    ),
+                    row=1, col=1
+                )
+                
+                # Phasen-Marker
+                fig.add_trace(
+                    go.Scatter(
+                        x=[freq], 
+                        y=[phase_at_break],
+                        mode='markers',
+                        marker=dict(
+                            symbol=symbol,
+                            size=size,
+                            color=color,
+                            line=dict(width=2, color='white')
+                        ),
+                        showlegend=False,  # Nicht doppelt in Legende
+                        hovertemplate=f'{marker_name}<br>ω: {freq:.3f} rad/s<br>∠G: {phase_at_break:.1f}°<extra></extra>'
+                    ),
+                    row=2, col=1
+                )
+                
+                # Vertikale Hilfslinie (optional)
+                fig.add_vline(
+                    x=freq,
+                    line_dash="dot",
+                    line_color=color,
+                    opacity=0.3,
+                    annotation_text=f"ω_{name_prefix.lower()}={freq:.1f}",
+                    annotation_position="top"
+                )
+        
+        except Exception as e:
+            st.warning(f"Knickfrequenz-Marker konnten nicht hinzugefügt werden: {e}")
     
     def _create_separate_magnitude_phase_plots(self, omega_vals, magnitude, phase_deg):
-        """Erstelle separate Magnitude und Phase Plots"""
         
         col_mag, col_phase = st.columns(2)
         
@@ -1596,7 +2335,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 yaxis_title="|G(jω)|",
                 height=400
             )
-            st.plotly_chart(fig_mag, use_container_width=True)
+            st.plotly_chart(fig_mag, use_container_width=True, key="bode_magnitude_plot")
         
         with col_phase:
             st.markdown("**Phasengang**")
@@ -1617,71 +2356,135 @@ class TransferFunctionAnalysisModule(BaseModule):
                 yaxis_title="∠G(jω) [°]",
                 height=400
             )
-            st.plotly_chart(fig_phase, use_container_width=True)
+            st.plotly_chart(fig_phase, use_container_width=True, key="bode_phase_plot")
     
-    def _analyze_stability_margins_detailed(self, omega_vals, magnitude_db, phase_deg):
-        """Detaillierte Stabilitätsreserven-Analyse"""
+    def _analyze_stability_margins_detailed(self, omega_vals, magnitude_db, phase_deg, G_s=None, s=None):
+        """Detaillierte Stabilitätsreserven-Analyse mit Knickfrequenz-Support"""
         
         col_margin1, col_margin2 = st.columns(2)
         
         with col_margin1:
             st.markdown("#### 📊 Amplitudenreserve")
             
-            # Finde -180° Durchgang
-            phase_shifted = phase_deg + 180
-            phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+            # Debug: Zeige Phase-Werte
+            min_phase = np.min(phase_deg)
+            max_phase = np.max(phase_deg)
+            st.write(f"Debug: Phase-Bereich: {min_phase:.1f}° bis {max_phase:.1f}°")
             
-            if len(phase_crossings) > 0:
-                idx = phase_crossings[0]
-                if idx < len(omega_vals) - 1:
-                    phase_crossover_freq = np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
-                                                   [omega_vals[idx], omega_vals[idx+1]])
-                    # Magnitude bei dieser Frequenz
-                    freq_idx = np.argmin(np.abs(omega_vals - phase_crossover_freq))
-                    gain_margin = -magnitude_db[freq_idx]
-                    
-                    st.metric("Amplitudenreserve", f"{gain_margin:.1f} dB")
-                    st.write(f"Bei ω = {phase_crossover_freq:.3f} rad/s")
-                    
-                    if gain_margin > 6:
-                        st.success("✅ Gut (> 6 dB)")
-                    elif gain_margin > 3:
-                        st.warning("⚠️ Akzeptabel (3-6 dB)")
-                    else:
-                        st.error("❌ Kritisch (< 3 dB)")
+            # Erweiterte Suche nach -180° Durchgang
+            target_phase = -180.0
+            phase_diff = np.abs(phase_deg - target_phase)
+            min_diff_idx = np.argmin(phase_diff)
+            min_phase_diff = phase_diff[min_diff_idx]
+            
+            st.write(f"Debug: Nähester Punkt zu -180°: {phase_deg[min_diff_idx]:.1f}° (Abweichung: {min_phase_diff:.1f}°)")
+            
+            # Verwende relaxierte Toleranz für -180° Durchgang
+            if min_phase_diff < 10.0:  # ±10° Toleranz
+                phase_crossover_freq = omega_vals[min_diff_idx]
+                gain_margin = -magnitude_db[min_diff_idx]
+                
+                st.metric("Amplitudenreserve", f"{gain_margin:.1f} dB")
+                st.write(f"Bei ω = {phase_crossover_freq:.3f} rad/s")
+                st.write(f"Phase: {phase_deg[min_diff_idx]:.1f}° (Ziel: -180°)")
+                
+                if gain_margin > 6:
+                    st.success("✅ Gut (> 6 dB)")
+                elif gain_margin > 3:
+                    st.warning("⚠️ Akzeptabel (3-6 dB)")
                 else:
-                    st.write("Nicht berechenbar")
+                    st.error("❌ Kritisch (< 3 dB)")
             else:
-                st.write("Kein -180° Durchgang gefunden")
+                # Suche nach tatsächlichen Nulldurchgängen (alte Methode als Fallback)
+                phase_shifted = phase_deg + 180
+                phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+                
+                if len(phase_crossings) > 0:
+                    idx = phase_crossings[0]
+                    if idx < len(omega_vals) - 1:
+                        phase_crossover_freq = np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
+                                                       [omega_vals[idx], omega_vals[idx+1]])
+                        # Magnitude bei dieser Frequenz interpolieren
+                        gain_at_crossover = np.interp(phase_crossover_freq, omega_vals, magnitude_db)
+                        gain_margin = -gain_at_crossover
+                        
+                        st.metric("Amplitudenreserve", f"{gain_margin:.1f} dB")
+                        st.write(f"Bei ω = {phase_crossover_freq:.3f} rad/s")
+                        
+                        if gain_margin > 6:
+                            st.success("✅ Gut (> 6 dB)")
+                        elif gain_margin > 3:
+                            st.warning("⚠️ Akzeptabel (3-6 dB)")
+                        else:
+                            st.error("❌ Kritisch (< 3 dB)")
+                    else:
+                        st.write("Phasendurchgang außerhalb des Frequenzbereichs")
+                else:
+                    st.write("Kein -180° Durchgang gefunden (auch mit erweiterter Suche)")
         
         with col_margin2:
-            st.markdown("#### � Phasenreserve")
+            st.markdown("#### 📐 Phasenreserve")
             
-            # Finde 0 dB Durchgang
-            zero_crossings = np.where(np.diff(np.signbit(magnitude_db)))[0]
-            if len(zero_crossings) > 0:
-                idx = zero_crossings[0]
-                if idx < len(omega_vals) - 1:
-                    gain_crossover_freq = np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
-                                                  [omega_vals[idx], omega_vals[idx+1]])
-                    # Phase bei dieser Frequenz
-                    freq_idx = np.argmin(np.abs(omega_vals - gain_crossover_freq))
-                    phase_at_crossover = phase_deg[freq_idx]
-                    phase_margin = 180 + phase_at_crossover
-                    
-                    st.metric("Phasenreserve", f"{phase_margin:.1f}°")
-                    st.write(f"Bei ω = {gain_crossover_freq:.3f} rad/s")
-                    
-                    if phase_margin > 45:
-                        st.success("✅ Gut (> 45°)")
-                    elif phase_margin > 30:
-                        st.warning("⚠️ Akzeptabel (30-45°)")
-                    else:
-                        st.error("❌ Kritisch (< 30°)")
+            # Finde 0 dB Durchgang (mit Toleranz)
+            tolerance_db = 1.0  # ±1 dB Toleranz
+            near_zero_db = np.abs(magnitude_db) < tolerance_db
+            
+            if np.any(near_zero_db):
+                # Finde genaueste Annäherung an 0 dB
+                closest_idx = np.argmin(np.abs(magnitude_db))
+                gain_crossover_freq = omega_vals[closest_idx]
+                phase_at_crossover = phase_deg[closest_idx]
+                phase_margin = 180 + phase_at_crossover
+                
+                st.metric("Phasenreserve", f"{phase_margin:.1f}°")
+                st.write(f"Bei ω = {gain_crossover_freq:.3f} rad/s")
+                st.write(f"Magnitude: {magnitude_db[closest_idx]:.1f} dB (Ziel: 0 dB)")
+                
+                if phase_margin > 45:
+                    st.success("✅ Gut (> 45°)")
+                elif phase_margin > 30:
+                    st.warning("⚠️ Akzeptabel (30-45°)")
                 else:
-                    st.write("Nicht berechenbar")
+                    st.error("❌ Kritisch (< 30°)")
             else:
-                st.write("Kein 0 dB Durchgang gefunden")
+                # Suche nach tatsächlichen Nulldurchgängen
+                zero_crossings = np.where(np.diff(np.signbit(magnitude_db)))[0]
+                if len(zero_crossings) > 0:
+                    idx = zero_crossings[0]
+                    if idx < len(omega_vals) - 1:
+                        gain_crossover_freq = np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
+                                                      [omega_vals[idx], omega_vals[idx+1]])
+                        # Phase bei dieser Frequenz interpolieren
+                        phase_at_crossover = np.interp(gain_crossover_freq, omega_vals, phase_deg)
+                        phase_margin = 180 + phase_at_crossover
+                        
+                        st.metric("Phasenreserve", f"{phase_margin:.1f}°")
+                        st.write(f"Bei ω = {gain_crossover_freq:.3f} rad/s")
+                        
+                        if phase_margin > 45:
+                            st.success("✅ Gut (> 45°)")
+                        elif phase_margin > 30:
+                            st.warning("⚠️ Akzeptabel (30-45°)")
+                        else:
+                            st.error("❌ Kritisch (< 30°)")
+                    else:
+                        st.write("0 dB Durchgang außerhalb des Frequenzbereichs")
+                else:
+                    # Knickfrequenz-basierter Fallback wenn kein 0 dB Durchgang
+                    if G_s is not None and s is not None:
+                        st.info("ℹ️ Klassische Knickfrequenz-Analyse")
+                        try:
+                            # Schätze Phasenreserve basierend auf Systemstruktur
+                            phase_estimate = self._estimate_phase_margin_from_structure(G_s, s)
+                            if phase_estimate is not None:
+                                st.write(f"Geschätzte Phasenreserve: ~{phase_estimate:.1f}°")
+                                st.caption("Basierend auf Pol-/Nullstellenstruktur")
+                            else:
+                                st.write("Struktur-basierte Schätzung nicht möglich")
+                        except Exception as e:
+                            st.write(f"Strukturanalyse nicht möglich: {e}")
+                    else:
+                        st.write("Kein 0 dB Durchgang gefunden")
     
     def _analyze_bandwidth(self, omega_vals, magnitude_db, G_s, s):
         """Bandbreiten-Analyse"""
@@ -1785,7 +2588,7 @@ class TransferFunctionAnalysisModule(BaseModule):
         except Exception as e:
             st.write(f"Umkreisungsanalyse nicht möglich: {e}")
     # Aktualisierte Methoden für die Komplettanalyse
-    def _create_bode_plot(self, G_s, s, omega):
+    def _create_bode_plot(self, G_s, s, omega, show_asymptotic=False):
         """Erstelle Bode-Diagramm für Komplettanalyse"""
         try:
             # Automatischer Frequenzbereich
@@ -1810,7 +2613,7 @@ class TransferFunctionAnalysisModule(BaseModule):
             if len(G_clean) > 0:
                 magnitude_db = 20 * np.log10(np.abs(G_clean))
                 phase_deg = np.angle(G_clean) * 180 / np.pi
-                self._create_bode_plot_detailed(omega_clean, magnitude_db, phase_deg)
+                self._create_bode_plot_detailed(omega_clean, magnitude_db, phase_deg, G_s, s, show_asymptotic)
             else:
                 st.error("Keine gültigen Frequenzgang-Werte")
                 
@@ -2009,7 +2812,7 @@ class TransferFunctionAnalysisModule(BaseModule):
             )
         )
         
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="nyquist_extended_plot")
         
         # Erweiterte Nyquist-Stabilitätsanalyse
         if show_encirclements:
@@ -2157,7 +2960,7 @@ class TransferFunctionAnalysisModule(BaseModule):
                 yaxis=dict(showgrid=True, zeroline=True, scaleanchor="x", scaleratio=1)
             )
             
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="root_locus_plot")
             
             # Interaktive K-Variation
             if interactive_k:
@@ -3142,7 +3945,1269 @@ class TransferFunctionAnalysisModule(BaseModule):
         except Exception as e:
             st.error(f"Fehler bei zusätzlicher Wurzelortskurven-Analyse: {e}")
     
+    def comparison_analysis(self):
+        """Vergleichsanalyse mehrerer Übertragungsfunktionen"""
+        st.subheader("⚖️ Vergleichsanalyse")
+        
+        st.markdown("""
+        **Vergleichsanalyse:** Analysiere und vergleiche mehrere Übertragungsfunktionen gleichzeitig.
+        Perfekt für Systemvergleiche, Reglerentwurf und Parameteroptimierung.
+        """)
+        
+        # Anzahl der Systeme
+        num_systems = st.number_input(
+            "Anzahl der Systeme:", 
+            min_value=2, 
+            max_value=6, 
+            value=3,
+            key='num_systems_comp'
+        )
+        
+        st.markdown("### 🎛️ Systemdefinitionen")
+        
+        systems = []
+        labels = []
+        
+        # Systemeingaben
+        for i in range(num_systems):
+            st.markdown(f"#### System {i+1}")
+            
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                tf = st.text_input(
+                    f"G{i+1}(s):",
+                    value=f"1/(s+{i+1})" if i < 3 else "10/(s**2+2*s+10)",
+                    key=f"system_comp_{i}",
+                    help="Beispiele: 1/(s+1), 10/(s**2+2*s+10), (s+1)/(s**2+3*s+2)"
+                )
+                systems.append(tf)
+            
+            with col2:
+                label = st.text_input(
+                    f"Label:",
+                    value=f"System {i+1}",
+                    key=f"label_comp_{i}"
+                )
+                labels.append(label)
+        
+        # Vergleichsoptionen
+        st.markdown("### ⚙️ Vergleichsoptionen")
+        
+        col_opt1, col_opt2, col_opt3 = st.columns(3)
+        
+        with col_opt1:
+            st.markdown("**Darstellung:**")
+            show_combined = st.checkbox(
+                "Gesamtübertragungsfunktion anzeigen", 
+                help="Zeigt das Produkt aller Systeme: G_gesamt = G1 × G2 × ...",
+                key='show_combined_comp'
+            )
+            show_individual_margins = st.checkbox(
+                "Einzelsystem-Reserven", 
+                value=True,
+                key='show_individual_margins_comp'
+            )
+        
+        with col_opt2:
+            st.markdown("**Analyse:**")
+            show_stability_margins = st.checkbox(
+                "Stabilitätsreserven anzeigen", 
+                value=True,
+                help="Berechnet Amplituden- und Phasenreserven",
+                key='show_stability_margins_comp'
+            )
+            show_characteristics = st.checkbox(
+                "Systemcharakteristik", 
+                value=True,
+                key='show_characteristics_comp'
+            )
+        
+        with col_opt3:
+            st.markdown("**Plots:**")
+            show_bode_comparison = st.checkbox(
+                "Bode-Vergleich", 
+                value=True,
+                key='show_bode_comparison_comp'
+            )
+            show_nyquist_comparison = st.checkbox(
+                "Nyquist-Vergleich", 
+                value=True,
+                key='show_nyquist_comparison_comp'
+            )
+        
+        if st.button("🚀 Vergleichsanalyse starten", type="primary", key='start_comparison_analysis'):
+            self._create_comparison_plots(
+                systems, labels, show_combined, show_stability_margins,
+                show_individual_margins, show_characteristics, 
+                show_bode_comparison, show_nyquist_comparison
+            )
+    
+    def _create_comparison_plots(self, systems, labels, show_combined=False, show_stability_margins=False,
+                               show_individual_margins=True, show_characteristics=True,
+                               show_bode_comparison=True, show_nyquist_comparison=True):
+        """Erstelle Vergleichsdiagramme für mehrere Systeme"""
+        
+        st.markdown("### 📊 Vergleichsdiagramme")
+        
+        # Plots vorbereiten
+        if show_nyquist_comparison:
+            fig_nyquist = go.Figure()
+        
+        if show_bode_comparison:
+            fig_bode = make_subplots(
+                rows=2, cols=1,
+                subplot_titles=('Amplitudengang Vergleich', 'Phasengang Vergleich'),
+                vertical_spacing=0.1
+            )
+        
+        # Daten für Gesamtübertragungsfunktion sammeln
+        valid_systems = []
+        valid_labels = []
+        system_data = []
+        
+        # Einzelsysteme verarbeiten
+        for i, (tf_str, label) in enumerate(zip(systems, labels)):
+            try:
+                # Parse System
+                s, omega = sp.symbols('s omega', real=True)
+                symbols_dict = {'s': s, 'omega': omega, 'j': sp.I}
+                
+                G_s = safe_sympify(tf_str, symbols_dict)
+                
+                # Konvertiere zu SymPy Ausdruck falls nötig
+                if not hasattr(G_s, 'subs'):
+                    G_s = sp.sympify(G_s)
+                
+                valid_systems.append(G_s)
+                valid_labels.append(label)
+                
+                # Frequenzgang berechnen
+                omega_vals = np.logspace(-2, 3, 1000)
+                j = sp.I
+                G_jw = G_s.subs(s, j*omega)
+                
+                # Numerische Auswertung
+                if G_jw.is_number:
+                    G_vals = np.full_like(omega_vals, complex(G_jw), dtype=complex)
+                else:
+                    G_func = sp.lambdify(omega, G_jw, 'numpy')
+                    G_vals = G_func(omega_vals)
+                
+                # Filter finite values
+                finite_mask = np.isfinite(G_vals)
+                omega_clean = omega_vals[finite_mask]
+                G_clean = G_vals[finite_mask]
+                
+                if len(G_clean) > 0:
+                    real_vals = np.real(G_clean)
+                    imag_vals = np.imag(G_clean)
+                    magnitude_db = 20 * np.log10(np.abs(G_clean))
+                    phase_deg = np.angle(G_clean) * 180 / np.pi
+                    
+                    # Speichere Systemdaten
+                    system_data.append({
+                        'label': label,
+                        'G_s': G_s,
+                        'omega_clean': omega_clean,
+                        'magnitude_db': magnitude_db,
+                        'phase_deg': phase_deg,
+                        'real_vals': real_vals,
+                        'imag_vals': imag_vals
+                    })
+                    
+                    # Farbe für dieses System
+                    color = f'hsl({i*40}, 70%, 50%)'
+                    
+                    # Nyquist-Plot
+                    if show_nyquist_comparison:
+                        fig_nyquist.add_trace(go.Scatter(
+                            x=real_vals, y=imag_vals,
+                            mode='lines',
+                            name=label,
+                            line=dict(color=color, width=2),
+                            hovertemplate=f'{label}<br>Real: %{{x:.3f}}<br>Imag: %{{y:.3f}}<extra></extra>'
+                        ))
+                    
+                    # Bode-Plot
+                    if show_bode_comparison:
+                        fig_bode.add_trace(
+                            go.Scatter(
+                                x=omega_clean, y=magnitude_db,
+                                mode='lines',
+                                name=label,
+                                line=dict(color=color, width=2),
+                                hovertemplate=f'{label}<br>ω: %{{x:.3f}}<br>|G|: %{{y:.1f}} dB<extra></extra>'
+                            ),
+                            row=1, col=1
+                        )
+                        
+                        fig_bode.add_trace(
+                            go.Scatter(
+                                x=omega_clean, y=phase_deg,
+                                mode='lines',
+                                name=label,
+                                line=dict(color=color, width=2),
+                                showlegend=False,
+                                hovertemplate=f'{label}<br>ω: %{{x:.3f}}<br>∠G: %{{y:.1f}}°<extra></extra>'
+                            ),
+                            row=2, col=1
+                        )
+            
+            except Exception as e:
+                st.error(f"Fehler bei System {i+1} ({label}): {e}")
+                continue
+        
+        # Gesamtübertragungsfunktion hinzufügen
+        if show_combined and len(valid_systems) > 1:
+            self._add_combined_system_to_plots(
+                valid_systems, fig_nyquist if show_nyquist_comparison else None, 
+                fig_bode if show_bode_comparison else None, s, omega
+            )
+        
+        # Plots konfigurieren und anzeigen
+        if show_nyquist_comparison:
+            self._configure_and_show_nyquist_plot(fig_nyquist)
+        
+        if show_bode_comparison:
+            # Füge Knickfrequenz-Marker für alle Systeme hinzu
+            for data in system_data:
+                self._add_break_frequency_markers(
+                    fig_bode, data['G_s'], s, data['omega_clean'], 
+                    data['magnitude_db'], data['phase_deg']
+                )
+            
+            self._configure_and_show_bode_plot(fig_bode)
+        
+        # Stabilitätsreserven für Gesamtfunktion
+        if show_combined and show_stability_margins and len(valid_systems) > 1:
+            self._analyze_combined_stability_margins(valid_systems, s, omega)
+        
+        # Einzelsystem-Analysen
+        if show_individual_margins or show_characteristics:
+            self._show_individual_system_analysis(system_data, show_individual_margins, show_characteristics)
+    
+    def _add_combined_system_to_plots(self, valid_systems, fig_nyquist, fig_bode, s, omega):
+        """Füge Gesamtübertragungsfunktion zu den Plots hinzu"""
+        try:
+            # Berechne Gesamtübertragungsfunktion G_gesamt = G1 * G2 * G3 * ...
+            G_gesamt = valid_systems[0]
+            for system in valid_systems[1:]:
+                G_gesamt = G_gesamt * system
+            
+            # Frequenzgang der Gesamtfunktion berechnen
+            omega_vals = np.logspace(-2, 3, 1000)
+            j = sp.I
+            G_gesamt_jw = G_gesamt.subs(s, j*omega)
+            
+            if G_gesamt_jw.is_number:
+                G_gesamt_vals = np.full_like(omega_vals, complex(G_gesamt_jw), dtype=complex)
+            else:
+                G_gesamt_func = sp.lambdify(omega, G_gesamt_jw, 'numpy')
+                G_gesamt_vals = G_gesamt_func(omega_vals)
+            
+            # Filter finite values
+            finite_mask = np.isfinite(G_gesamt_vals)
+            omega_clean = omega_vals[finite_mask]
+            G_clean = G_gesamt_vals[finite_mask]
+            
+            if len(G_clean) > 0:
+                real_vals = np.real(G_clean)
+                imag_vals = np.imag(G_clean)
+                magnitude_db = 20 * np.log10(np.abs(G_clean))
+                phase_deg = np.angle(G_clean) * 180 / np.pi
+                
+                # Speichere für Stabilitätsanalyse
+                self._combined_system_data = {
+                    'omega_clean': omega_clean,
+                    'magnitude_db': magnitude_db,
+                    'phase_deg': phase_deg,
+                    'G_gesamt': G_gesamt
+                }
+                
+                # Zu Nyquist-Plot hinzufügen
+                if fig_nyquist is not None:
+                    fig_nyquist.add_trace(go.Scatter(
+                        x=real_vals, y=imag_vals,
+                        mode='lines',
+                        name='Gesamtfunktion G₁×G₂×...',
+                        line=dict(color='black', width=3, dash='dash'),
+                        hovertemplate='Gesamt<br>Real: %{x:.3f}<br>Imag: %{y:.3f}<extra></extra>'
+                    ))
+                
+                # Zu Bode-Plot hinzufügen
+                if fig_bode is not None:
+                    fig_bode.add_trace(
+                        go.Scatter(
+                            x=omega_clean, y=magnitude_db,
+                            mode='lines',
+                            name='Gesamtfunktion',
+                            line=dict(color='black', width=3, dash='dash'),
+                            hovertemplate='ω: %{x:.3f}<br>|G|: %{y:.1f} dB<extra></extra>'
+                        ),
+                        row=1, col=1
+                    )
+                    
+                    fig_bode.add_trace(
+                        go.Scatter(
+                            x=omega_clean, y=phase_deg,
+                            mode='lines',
+                            name='Gesamtfunktion',
+                            line=dict(color='black', width=3, dash='dash'),
+                            showlegend=False,
+                            hovertemplate='ω: %{x:.3f}<br>∠G: %{y:.1f}°<extra></extra>'
+                        ),
+                        row=2, col=1
+                    )
+            
+        except Exception as e:
+            st.error(f"❌ Fehler bei Gesamtfunktions-Berechnung: {e}")
+    
+    def _configure_and_show_nyquist_plot(self, fig_nyquist):
+        """Konfiguriere und zeige Nyquist-Plot"""
+        # Kritischer Punkt hinzufügen
+        fig_nyquist.add_trace(go.Scatter(
+            x=[-1], y=[0],
+            mode='markers',
+            marker=dict(symbol='x', size=15, color='red', line=dict(width=3)),
+            name='Kritischer Punkt (-1+0j)',
+            hovertemplate='Kritischer Punkt<br>Real: -1<br>Imag: 0<extra></extra>'
+        ))
+        
+        fig_nyquist.update_layout(
+            title="Nyquist-Diagramm Vergleich",
+            xaxis_title="Realteil",
+            yaxis_title="Imaginärteil",
+            showlegend=True,
+            height=500,
+            xaxis=dict(showgrid=True, scaleanchor="y", scaleratio=1),
+            yaxis=dict(showgrid=True)
+        )
+        
+        st.plotly_chart(fig_nyquist, use_container_width=True, key="comparison_nyquist_plot")
+    
+    def _configure_and_show_bode_plot(self, fig_bode):
+        """Konfiguriere und zeige Bode-Plot"""
+        # Layout
+        fig_bode.update_xaxes(type="log", title_text="Frequenz ω [rad/s]", row=2, col=1)
+        fig_bode.update_xaxes(type="log", row=1, col=1)
+        fig_bode.update_yaxes(title_text="Magnitude [dB]", row=1, col=1)
+        fig_bode.update_yaxes(title_text="Phase [°]", row=2, col=1)
+        
+        # Referenzlinien
+        fig_bode.add_hline(y=0, line_dash="dash", line_color="gray", row=1, col=1)
+        fig_bode.add_hline(y=-180, line_dash="dash", line_color="gray", row=2, col=1)
+        
+        fig_bode.update_layout(
+            title="Bode-Diagramm Vergleich",
+            height=600,
+            showlegend=True
+        )
+        
+        st.plotly_chart(fig_bode, use_container_width=True, key="comparison_bode_plot")
+    
+    def _analyze_combined_stability_margins(self, valid_systems, s, omega):
+        """Analysiere Stabilitätsreserven der Gesamtfunktion"""
+        if not hasattr(self, '_combined_system_data'):
+            st.error("❌ Gesamtfunktionsdaten nicht verfügbar")
+            return
+        
+        data = self._combined_system_data
+        omega_clean = data['omega_clean']
+        magnitude_db = data['magnitude_db']
+        phase_deg = data['phase_deg']
+        G_gesamt = data['G_gesamt']
+        
+        st.markdown("---")
+        st.markdown("### 📏 Stabilitätsreserven der Gesamtübertragungsfunktion")
+        
+        # Extrahiere Knickfrequenzen für präzise Analyse
+        break_frequencies = self._extract_break_frequencies(G_gesamt, s)
+        
+        col_margin1, col_margin2 = st.columns(2)
+        
+        with col_margin1:
+            st.markdown("#### 📊 Amplitudenreserve (Gesamtfunktion)")
+            
+            # Erweiterte -180° Durchgang-Suche
+            phase_shifted = phase_deg + 180
+            phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+            
+            gain_margin = None
+            phase_crossover_freq = None
+            
+            if len(phase_crossings) > 0:
+                # Exakter Durchgang gefunden
+                idx = phase_crossings[0]
+                if idx < len(omega_clean) - 1:
+                    phase_crossover_freq = np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
+                                                   [omega_clean[idx], omega_clean[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_clean - phase_crossover_freq))
+                    gain_margin = -magnitude_db[freq_idx]
+                    
+                    st.metric("Amplitudenreserve", f"{gain_margin:.1f} dB")
+                    st.write(f"Bei ω = {phase_crossover_freq:.3f} rad/s")
+                    
+                    # Bewertung mit Icon
+                    if gain_margin > 12:
+                        st.success("✅ Sehr gut (> 12 dB)")
+                    elif gain_margin > 6:
+                        st.success("✅ Gut (6-12 dB)")
+                    elif gain_margin > 3:
+                        st.warning("⚠️ Akzeptabel (3-6 dB)")
+                    else:
+                        st.error("❌ Kritisch (< 3 dB)")
+            else:
+                # Kein exakter Durchgang - analysiere basierend auf Knickfrequenzen
+                st.markdown("**Knickfrequenz-basierte Analyse:**")
+                
+                # Berechne asymptotische Phase basierend auf Systemstruktur
+                asymptotic_phase_at_high_freq = self._calculate_asymptotic_phase_from_breaks(G_gesamt, s, break_frequencies)
+                
+                st.write(f"Asymptotische Phase (ω→∞): {asymptotic_phase_at_high_freq:.1f}°")
+                
+                if asymptotic_phase_at_high_freq <= -180:
+                    # System erreicht theoretisch -180°
+                    # Berechne Frequenz basierend auf Knickfrequenzen
+                    estimated_phase_crossing = self._estimate_phase_crossing_from_breaks(
+                        G_gesamt, s, break_frequencies, -180
+                    )
+                    
+                    if estimated_phase_crossing:
+                        # Berechne Magnitude bei dieser Frequenz
+                        estimated_mag = self._calculate_magnitude_at_frequency(
+                            G_gesamt, s, omega, estimated_phase_crossing
+                        )
+                        estimated_gain_margin = -estimated_mag
+                        
+                        st.metric("Amplitudenreserve (berechnet)", f"{estimated_gain_margin:.1f} dB")
+                        st.write(f"Bei ω ≈ {estimated_phase_crossing:.3f} rad/s")
+                        st.info("ℹ️ Basiert auf Knickfrequenz-Analyse")
+                        
+                        # Bewertung
+                        if estimated_gain_margin > 12:
+                            st.success("✅ Sehr gut (> 12 dB)")
+                        elif estimated_gain_margin > 6:
+                            st.success("✅ Gut (6-12 dB)")
+                        elif estimated_gain_margin > 3:
+                            st.warning("⚠️ Akzeptabel (3-6 dB)")
+                        else:
+                            st.error("❌ Kritisch (< 3 dB)")
+                    else:
+                        st.metric("Amplitudenreserve", "∞ (praktisch stabil)")
+                        st.success("✅ System erreicht -180° nur bei ω→∞")
+                else:
+                    # System erreicht nie -180°
+                    st.metric("Amplitudenreserve", "∞ (unendlich)")
+                    st.success("✅ System erreicht nie -180°")
+        
+        with col_margin2:
+            st.markdown("#### 📐 Phasenreserve (Gesamtfunktion)")
+            
+            # Finde 0 dB Durchgang
+            zero_crossings = np.where(np.diff(np.signbit(magnitude_db)))[0]
+            
+            if len(zero_crossings) > 0:
+                idx = zero_crossings[0]
+                if idx < len(omega_clean) - 1:
+                    gain_crossover_freq = np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
+                                                  [omega_clean[idx], omega_clean[idx+1]])
+                    freq_idx = np.argmin(np.abs(omega_clean - gain_crossover_freq))
+                    phase_at_crossover = phase_deg[freq_idx]
+                    phase_margin = 180 + phase_at_crossover
+                    
+                    st.metric("Phasenreserve", f"{phase_margin:.1f}°")
+                    st.write(f"Bei ω = {gain_crossover_freq:.3f} rad/s")
+                    
+                    # Bewertung mit Icon
+                    if phase_margin > 60:
+                        st.success("✅ Sehr gut (> 60°)")
+                    elif phase_margin > 45:
+                        st.success("✅ Gut (45-60°)")
+                    elif phase_margin > 30:
+                        st.warning("⚠️ Akzeptabel (30-45°)")
+                    else:
+                        st.error("❌ Kritisch (< 30°)")
+                else:
+                    st.metric("Phasenreserve", "N/A")
+            else:
+                # Kein 0 dB Durchgang - analysiere basierend auf Knickfrequenzen
+                st.markdown("**0 dB Knickfrequenz-Analyse:**")
+                
+                # Schätze 0 dB Durchgang basierend auf DC-Verstärkung und Systemordnung
+                estimated_gain_crossing = self._estimate_gain_crossing_from_breaks(
+                    G_gesamt, s, break_frequencies, 0
+                )
+                
+                if estimated_gain_crossing:
+                    estimated_phase = self._calculate_phase_at_frequency(
+                        G_gesamt, s, omega, estimated_gain_crossing
+                    )
+                    estimated_phase_margin = 180 + estimated_phase
+                    
+                    st.metric("Phasenreserve (berechnet)", f"{estimated_phase_margin:.1f}°")
+                    st.write(f"Bei ω ≈ {estimated_gain_crossing:.3f} rad/s")
+                    st.info("ℹ️ Basiert auf Knickfrequenz-Analyse")
+                    
+                    # Bewertung
+                    if estimated_phase_margin > 60:
+                        st.success("✅ Sehr gut (> 60°)")
+                    elif estimated_phase_margin > 45:
+                        st.success("✅ Gut (45-60°)")
+                    elif estimated_phase_margin > 30:
+                        st.warning("⚠️ Akzeptabel (30-45°)")
+                    else:
+                        st.error("❌ Kritisch (< 30°)")
+                else:
+                    # Analysiere warum kein Durchgang
+                    dc_gain = self._get_dc_gain(G_gesamt, s)
+                    if dc_gain > 1:  # > 0 dB
+                        st.metric("Phasenreserve", "System hat hohe DC-Verstärkung")
+                        st.info("ℹ️ 0 dB Durchgang bei sehr hohen Frequenzen")
+                    else:
+                        st.metric("Phasenreserve", "N/A (Mag. unter 0 dB)")
+                        st.warning("⚠️ Magnitude bleibt unter 0 dB")
+        
+        # Zusätzliche Gesamtfunktions-Eigenschaften
+        st.markdown("#### 🎯 Gesamtfunktions-Charakteristik")
+        
+        col_char1, col_char2, col_char3 = st.columns(3)
+        
+        with col_char1:
+            # DC-Verstärkung
+            try:
+                dc_gain_db = magnitude_db[0]  # Bei niedrigster Frequenz
+                st.metric("DC-Verstärkung", f"{dc_gain_db:.1f} dB")
+                
+                # Linear auch anzeigen
+                dc_gain_linear = 10**(dc_gain_db/20)
+                st.write(f"Linear: {dc_gain_linear:.3f}")
+            except:
+                st.metric("DC-Verstärkung", "N/A")
+        
+        with col_char2:
+            # Bandbreite (-3dB Punkt)
+            try:
+                dc_gain_db = magnitude_db[0]
+                cutoff_level = dc_gain_db - 3
+                below_cutoff = magnitude_db < cutoff_level
+                if np.any(below_cutoff):
+                    cutoff_idx = np.where(below_cutoff)[0][0]
+                    if cutoff_idx > 0:
+                        bandwidth = np.interp(cutoff_level, 
+                                            [magnitude_db[cutoff_idx-1], magnitude_db[cutoff_idx]],
+                                            [omega_clean[cutoff_idx-1], omega_clean[cutoff_idx]])
+                        st.metric("Bandbreite (-3dB)", f"{bandwidth:.2f} rad/s")
+                        st.write(f"= {bandwidth/(2*np.pi):.2f} Hz")
+                    else:
+                        st.metric("Bandbreite (-3dB)", "> Max ω")
+                else:
+                    st.metric("Bandbreite (-3dB)", "> Max ω")
+            except:
+                st.metric("Bandbreite (-3dB)", "N/A")
+        
+        with col_char3:
+            # Knickfrequenzen anzeigen
+            st.markdown("**Knickfrequenzen:**")
+            if break_frequencies:
+                for i, (freq, btype) in enumerate(break_frequencies[:3]):  # Zeige nur erste 3
+                    type_symbol = "×" if "pole" in btype else "○"
+                    st.write(f"{type_symbol} {freq:.2f} rad/s")
+                if len(break_frequencies) > 3:
+                    st.write(f"... und {len(break_frequencies)-3} weitere")
+            else:
+                st.write("Keine Knickfrequenzen")
+        
+        # Zeige Knickfrequenzen als Info
+        if break_frequencies:
+            st.markdown("#### 📍 Identifizierte Knickfrequenzen")
+            break_info = []
+            for freq, btype in break_frequencies:
+                if "pole" in btype:
+                    symbol = "🔴"
+                    desc = "Pol"
+                else:
+                    symbol = "🔵" 
+                    desc = "Nullstelle"
+                
+                if "complex" in btype:
+                    desc += " (komplex)"
+                
+                break_info.append({
+                    'Typ': f"{symbol} {desc}",
+                    'Frequenz [rad/s]': f"{freq:.3f}",
+                    'Frequenz [Hz]': f"{freq/(2*np.pi):.3f}"
+                })
+            
+            import pandas as pd
+            df_breaks = pd.DataFrame(break_info)
+            st.dataframe(df_breaks, use_container_width=True)
+    
+    def _extract_break_frequencies(self, G_s, s):
+        """Extrahiere alle Knickfrequenzen aus der Übertragungsfunktion"""
+        try:
+            break_frequencies = []
+            
+            # Numerator und Denominator extrahieren
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            
+            # Pole verarbeiten
+            poles = sp.solve(den, s)
+            for pole in poles:
+                pole_val = complex(pole.evalf())
+                if abs(pole_val.imag) < 1e-10:  # Reeller Pol
+                    if pole_val.real < 0:  # Stabiler Pol
+                        break_freq = abs(pole_val.real)
+                        if break_freq > 1e-6:  # Ignoriere Pole bei s≈0
+                            break_frequencies.append((break_freq, 'pole'))
+                else:  # Komplexer Pol
+                    if pole_val.real < 0:  # Stabiler komplexer Pol
+                        break_freq = abs(pole_val)  # Eigenfrequenz ωn
+                        if break_freq > 1e-6:
+                            break_frequencies.append((break_freq, 'complex_pole'))
+            
+            # Nullstellen verarbeiten
+            zeros = sp.solve(num, s)
+            for zero in zeros:
+                zero_val = complex(zero.evalf())
+                if abs(zero_val.imag) < 1e-10:  # Reelle Nullstelle
+                    break_freq = abs(zero_val.real)
+                    if break_freq > 1e-6:
+                        break_frequencies.append((break_freq, 'zero'))
+                else:  # Komplexe Nullstelle
+                    break_freq = abs(zero_val)
+                    if break_freq > 1e-6:
+                        break_frequencies.append((break_freq, 'complex_zero'))
+            
+            # Sortiere nach Frequenz
+            break_frequencies.sort(key=lambda x: x[0])
+            
+            return break_frequencies
+            
+        except Exception as e:
+            st.warning(f"Knickfrequenz-Extraktion fehlgeschlagen: {e}")
+            return []
+    
+    def _calculate_asymptotic_phase_from_breaks(self, G_s, s, break_frequencies):
+        """Berechne asymptotische Phase basierend auf Knickfrequenzen"""
+        try:
+            # DC-Phase
+            dc_gain = self._get_dc_gain(G_s, s)
+            phase_offset = 180 if dc_gain < 0 else 0
+            
+            # Systemordnung bestimmen
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            
+            num_degree = sp.degree(num, s) if sp.degree(num, s) is not None else 0
+            den_degree = sp.degree(den, s) if sp.degree(den, s) is not None else 0
+            
+            system_order = int(den_degree) - int(num_degree)
+            
+            # Asymptotische Phase = -90° × Systemordnung + DC-Offset
+            asymptotic_phase = -90 * system_order + phase_offset
+            
+            # Berücksichtige Integrator-Terme (Pole bei s=0)
+            poles = sp.solve(den, s)
+            integrator_count = sum(1 for pole in poles if abs(complex(pole.evalf())) < 1e-6)
+            asymptotic_phase -= 90 * integrator_count
+            
+            return asymptotic_phase
+            
+        except Exception:
+            return -180  # Konservative Schätzung
+    
+    def _estimate_phase_crossing_from_breaks(self, G_s, s, break_frequencies, target_phase):
+        """Schätze Frequenz für Phasendurchgang basierend auf Knickfrequenzen"""
+        try:
+            if not break_frequencies:
+                return None
+            
+            # Für einfache Systeme: Grobe Schätzung basierend auf höchster Knickfrequenz
+            # und Systemordnung
+            highest_break = max(break_frequencies, key=lambda x: x[0])[0]
+            
+            # Systemordnung
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            num_degree = sp.degree(num, s) if sp.degree(num, s) is not None else 0
+            den_degree = sp.degree(den, s) if sp.degree(den, s) is not None else 0
+            system_order = int(den_degree) - int(num_degree)
+            
+            # Grobe Schätzung: -180° wird etwa bei 10× der höchsten Knickfrequenz erreicht
+            # für Systeme 2. Ordnung
+            if system_order >= 2:
+                estimated_freq = highest_break * 10
+                return estimated_freq
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def _estimate_gain_crossing_from_breaks(self, G_s, s, break_frequencies, target_gain_db):
+        """Schätze Frequenz für Verstärkungsdurchgang basierend auf Knickfrequenzen"""
+        try:
+            # DC-Verstärkung
+            dc_gain = self._get_dc_gain(G_s, s)
+            dc_gain_db = 20 * np.log10(abs(dc_gain)) if dc_gain != 0 else -np.inf
+            
+            if dc_gain_db <= target_gain_db:
+                return None  # 0 dB nie erreicht
+            
+            # Systemordnung
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            num_degree = sp.degree(num, s) if sp.degree(num, s) is not None else 0
+            den_degree = sp.degree(den, s) if sp.degree(den, s) is not None else 0
+            system_order = int(den_degree) - int(num_degree)
+            
+            if not break_frequencies:
+                return None
+            
+            # Einfache Schätzung basierend auf Systemordnung und DC-Verstärkung
+            # Für System n-ter Ordnung: -20n dB/Dekade Abfall
+            if system_order > 0:
+                # Benötigte Dekaden für Abfall von DC-Gain auf target_gain
+                decades_needed = (dc_gain_db - target_gain_db) / (20 * system_order)
+                
+                # Startfrequenz: Erste signifikante Knickfrequenz
+                start_freq = min(break_frequencies, key=lambda x: x[0])[0]
+                
+                # Geschätzte Crossover-Frequenz
+                estimated_freq = start_freq * (10 ** decades_needed)
+                return estimated_freq
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def _calculate_magnitude_at_frequency(self, G_s, s, omega, target_freq):
+        """Berechne Magnitude bei einer bestimmten Frequenz"""
+        try:
+            j = sp.I
+            G_jw = G_s.subs(s, j * target_freq)
+            
+            if G_jw.is_number:
+                mag_val = abs(complex(G_jw))
+            else:
+                G_func = sp.lambdify(omega, G_jw, 'numpy')
+                mag_val = abs(G_func(target_freq))
+            
+            mag_db = 20 * np.log10(mag_val) if mag_val > 0 else -np.inf
+            return mag_db
+            
+        except Exception:
+            return 0
+    
+    def _calculate_phase_at_frequency(self, G_s, s, omega, target_freq):
+        """Berechne Phase bei einer bestimmten Frequenz"""
+        try:
+            j = sp.I
+            G_jw = G_s.subs(s, j * target_freq)
+            
+            if G_jw.is_number:
+                phase_val = np.angle(complex(G_jw))
+            else:
+                G_func = sp.lambdify(omega, G_jw, 'numpy')
+                phase_val = np.angle(G_func(target_freq))
+            
+            phase_deg = phase_val * 180 / np.pi
+            return phase_deg
+            
+        except Exception:
+            return -180
+    
+    def _calculate_magnitude_at_frequency(self, G_s, s, omega, target_freq):
+        """Berechne Magnitude bei einer bestimmten Frequenz"""
+        try:
+            j = sp.I
+            G_jw = G_s.subs(s, j * target_freq)
+            
+            if G_jw.is_number:
+                mag_val = abs(complex(G_jw.evalf()))
+            else:
+                G_func = sp.lambdify(omega, G_jw, 'numpy')
+                mag_val = abs(G_func(target_freq))
+            
+            mag_db = 20 * np.log10(mag_val) if mag_val > 0 else -np.inf
+            return mag_db
+            
+        except Exception:
+            return 0
+    
+    def _calculate_phase_at_frequency(self, G_s, s, omega, target_freq):
+        """Berechne Phase bei einer bestimmten Frequenz"""
+        try:
+            j = sp.I
+            G_jw = G_s.subs(s, j * target_freq)
+            
+            if G_jw.is_number:
+                phase_val = np.angle(complex(G_jw.evalf())) * 180 / np.pi
+            else:
+                G_func = sp.lambdify(omega, G_jw, 'numpy')
+                phase_val = np.angle(G_func(target_freq)) * 180 / np.pi
+            
+            return phase_val
+            
+        except Exception:
+            return 0
+    
+    def _get_dc_gain(self, G_s, s):
+        """Ermittle DC-Verstärkung"""
+        try:
+            dc_gain = float(G_s.subs(s, 0))
+            return dc_gain
+        except:
+            # Falls Pol bei s=0, berechne Grenzwert
+            try:
+                # Für Integrator-Systeme ist DC-Verstärkung unendlich
+                limit_val = sp.limit(G_s, s, 0)
+                if limit_val.is_infinite:
+                    return float('inf')
+                else:
+                    return float(limit_val)
+            except:
+                return 1.0  # Fallback
+    
+    def _calculate_asymptotic_phase_limit(self, G_s, s):
+        """Berechne asymptotische Phasengrenze für ω→∞"""
+        try:
+            # Systemordnung bestimmen
+            num = sp.numer(G_s)
+            den = sp.denom(G_s)
+            
+            num_degree = sp.degree(num, s) if sp.degree(num, s) is not None else 0
+            den_degree = sp.degree(den, s) if sp.degree(den, s) is not None else 0
+            
+            system_order = int(den_degree) - int(num_degree)
+            
+            # Asymptotische Phase = -90° × Systemordnung
+            asymptotic_phase = -90 * system_order
+            
+            # Berücksichtige DC-Verstärkung für Vorzeichen
+            try:
+                dc_gain = float(G_s.subs(s, 0))
+                if dc_gain < 0:
+                    asymptotic_phase += 180
+            except:
+                # Falls Pol bei s=0, analysiere Verhalten anders
+                # Für Integrator-Terme
+                poles = sp.solve(den, s)
+                zeros_at_origin = sum(1 for pole in poles if abs(complex(pole.evalf())) < 1e-10)
+                asymptotic_phase -= 90 * zeros_at_origin
+            
+            return asymptotic_phase
+            
+        except Exception:
+            return -180  # Konservative Schätzung
+    
+    def _estimate_phase_crossing_frequency(self, omega_vals, phase_vals, target_phase):
+        """Schätze Frequenz wo eine bestimmte Phase erreicht wird"""
+        try:
+            # Prüfe ob Trend zu target_phase führt
+            phase_trend = phase_vals[-1] - phase_vals[0]
+            freq_trend = omega_vals[-1] / omega_vals[0]
+            
+            if phase_trend == 0:
+                return None
+            
+            # Lineare Extrapolation (logarithmisch in Frequenz)
+            log_omega_vals = np.log10(omega_vals)
+            
+            # Finde Trend der letzten Punkte
+            n_points = min(50, len(phase_vals) // 4)
+            recent_log_omega = log_omega_vals[-n_points:]
+            recent_phase = phase_vals[-n_points:]
+            
+            # Lineare Regression für Trend
+            if len(recent_phase) > 1:
+                slope = (recent_phase[-1] - recent_phase[0]) / (recent_log_omega[-1] - recent_log_omega[0])
+                intercept = recent_phase[-1] - slope * recent_log_omega[-1]
+                
+                # Berechne log10(omega) für target_phase
+                if abs(slope) > 1e-10:
+                    log_omega_target = (target_phase - intercept) / slope
+                    omega_target = 10 ** log_omega_target
+                    
+                    # Nur zurückgeben wenn sinnvoll (nicht zu weit extrapoliert)
+                    if omega_target > omega_vals[-1] and omega_target < omega_vals[-1] * 1000:
+                        return omega_target
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def _estimate_magnitude_at_frequency(self, omega_vals, mag_vals, target_freq):
+        """Schätze Magnitude bei einer bestimmten Frequenz"""
+        try:
+            if target_freq <= omega_vals[-1]:
+                # Interpolation
+                return np.interp(target_freq, omega_vals, mag_vals)
+            else:
+                # Extrapolation basierend auf Trend
+                log_omega_vals = np.log10(omega_vals)
+                
+                # Verwende letzten Teil für Trend-Bestimmung
+                n_points = min(50, len(mag_vals) // 4)
+                recent_log_omega = log_omega_vals[-n_points:]
+                recent_mag = mag_vals[-n_points:]
+                
+                # Lineare Regression für Trend
+                if len(recent_mag) > 1:
+                    slope = (recent_mag[-1] - recent_mag[0]) / (recent_log_omega[-1] - recent_log_omega[0])
+                    intercept = recent_mag[-1] - slope * recent_log_omega[-1]
+                    
+                    log_target_freq = np.log10(target_freq)
+                    estimated_mag = slope * log_target_freq + intercept
+                    
+                    return estimated_mag
+                else:
+                    return mag_vals[-1]
+                    
+        except Exception:
+            return 0
+    
+    def _estimate_magnitude_crossing_frequency(self, omega_vals, mag_vals, target_mag):
+        """Schätze Frequenz wo eine bestimmte Magnitude erreicht wird"""
+        try:
+            # Ähnlich zur Phase-Schätzung
+            log_omega_vals = np.log10(omega_vals)
+            
+            # Finde Trend der letzten Punkte
+            n_points = min(50, len(mag_vals) // 4)
+            recent_log_omega = log_omega_vals[-n_points:]
+            recent_mag = mag_vals[-n_points:]
+            
+            # Lineare Regression für Trend
+            if len(recent_mag) > 1:
+                slope = (recent_mag[-1] - recent_mag[0]) / (recent_log_omega[-1] - recent_log_omega[0])
+                intercept = recent_mag[-1] - slope * recent_log_omega[-1]
+                
+                # Berechne log10(omega) für target_mag
+                if abs(slope) > 1e-10:
+                    log_omega_target = (target_mag - intercept) / slope
+                    omega_target = 10 ** log_omega_target
+                    
+                    # Nur zurückgeben wenn sinnvoll
+                    if omega_target > omega_vals[-1] and omega_target < omega_vals[-1] * 1000:
+                        return omega_target
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def _estimate_phase_at_frequency(self, omega_vals, phase_vals, target_freq):
+        """Schätze Phase bei einer bestimmten Frequenz"""
+        try:
+            if target_freq <= omega_vals[-1]:
+                # Interpolation
+                return np.interp(target_freq, omega_vals, phase_vals)
+            else:
+                # Extrapolation basierend auf Trend
+                log_omega_vals = np.log10(omega_vals)
+                
+                # Verwende letzten Teil für Trend-Bestimmung
+                n_points = min(50, len(phase_vals) // 4)
+                recent_log_omega = log_omega_vals[-n_points:]
+                recent_phase = phase_vals[-n_points:]
+                
+                # Lineare Regression für Trend
+                if len(recent_phase) > 1:
+                    slope = (recent_phase[-1] - recent_phase[0]) / (recent_log_omega[-1] - recent_log_omega[0])
+                    intercept = recent_phase[-1] - slope * recent_log_omega[-1]
+                    
+                    log_target_freq = np.log10(target_freq)
+                    estimated_phase = slope * log_target_freq + intercept
+                    
+                    return estimated_phase
+                else:
+                    return phase_vals[-1]
+                    
+        except Exception:
+            return -180
+    
+    def _show_individual_system_analysis(self, system_data, show_margins, show_characteristics):
+        """Zeige Analyse der Einzelsysteme"""
+        if not system_data:
+            return
+        
+        if show_characteristics:
+            st.markdown("---")
+            st.markdown("### 📊 Systemcharakteristik-Vergleich")
+            
+            # Tabelle mit Systemvergleich
+            comparison_data = []
+            for data in system_data:
+                try:
+                    dc_gain_db = data['magnitude_db'][0]
+                    dc_gain_linear = 10**(dc_gain_db/20)
+                    max_gain_db = np.max(data['magnitude_db'])
+                    max_gain_freq = data['omega_clean'][np.argmax(data['magnitude_db'])]
+                    
+                    comparison_data.append({
+                        'System': data['label'],
+                        'DC-Verstärkung [dB]': f"{dc_gain_db:.1f}",
+                        'DC-Verstärkung [linear]': f"{dc_gain_linear:.3f}",
+                        'Max. Verstärkung [dB]': f"{max_gain_db:.1f}",
+                        'Resonanzfrequenz [rad/s]': f"{max_gain_freq:.3f}"
+                    })
+                except:
+                    comparison_data.append({
+                        'System': data['label'],
+                        'DC-Verstärkung [dB]': "N/A",
+                        'DC-Verstärkung [linear]': "N/A",
+                        'Max. Verstärkung [dB]': "N/A",
+                        'Resonanzfrequenz [rad/s]': "N/A"
+                    })
+            
+            import pandas as pd
+            df = pd.DataFrame(comparison_data)
+            st.dataframe(df, use_container_width=True)
+        
+        if show_margins:
+            st.markdown("---")
+            st.markdown("### 📏 Stabilitätsreserven-Vergleich")
+            
+            # Tabelle mit Stabilitätsreserven
+            margins_data = []
+            for data in system_data:
+                try:
+                    magnitude_db = data['magnitude_db']
+                    phase_deg = data['phase_deg']
+                    omega_clean = data['omega_clean']
+                    G_s = data.get('G_s')  # Falls verfügbar
+                    
+                    # Amplitudenreserve
+                    phase_shifted = phase_deg + 180
+                    phase_crossings = np.where(np.diff(np.signbit(phase_shifted)))[0]
+                    
+                    gain_margin = "N/A"
+                    if len(phase_crossings) > 0:
+                        idx = phase_crossings[0]
+                        if idx < len(omega_clean) - 1:
+                            freq_idx = np.argmin(np.abs(omega_clean - np.interp(0, [phase_shifted[idx], phase_shifted[idx+1]], 
+                                                                               [omega_clean[idx], omega_clean[idx+1]])))
+                            gain_margin = f"{-magnitude_db[freq_idx]:.1f} dB"
+                    elif G_s is not None:
+                        # Knickfrequenz-basierte Schätzung falls kein exakter Durchgang
+                        s_sym = sp.symbols('s')
+                        break_frequencies = self._extract_break_frequencies(G_s, s_sym)
+                        asymptotic_phase = self._calculate_asymptotic_phase_from_breaks(G_s, s_sym, break_frequencies)
+                        
+                        if asymptotic_phase <= -180:
+                            estimated_phase_crossing = self._estimate_phase_crossing_from_breaks(
+                                G_s, s_sym, break_frequencies, -180
+                            )
+                            if estimated_phase_crossing:
+                                estimated_mag = self._calculate_magnitude_at_frequency(
+                                    G_s, s_sym, sp.symbols('omega'), estimated_phase_crossing
+                                )
+                                gain_margin = f"{-estimated_mag:.1f} dB*"
+                            else:
+                                gain_margin = "∞ (stabil)"
+                        else:
+                            gain_margin = "∞ (nie -180°)"
+                    
+                    # Phasenreserve
+                    zero_crossings = np.where(np.diff(np.signbit(magnitude_db)))[0]
+                    phase_margin = "N/A"
+                    if len(zero_crossings) > 0:
+                        idx = zero_crossings[0]
+                        if idx < len(omega_clean) - 1:
+                            freq_idx = np.argmin(np.abs(omega_clean - np.interp(0, [magnitude_db[idx], magnitude_db[idx+1]], 
+                                                                               [omega_clean[idx], omega_clean[idx+1]])))
+                            phase_at_crossover = phase_deg[freq_idx]
+                            phase_margin = f"{180 + phase_at_crossover:.1f}°"
+                    elif G_s is not None:
+                        # Knickfrequenz-basierte Schätzung falls kein exakter Durchgang
+                        s_sym = sp.symbols('s')
+                        break_frequencies = self._extract_break_frequencies(G_s, s_sym)
+                        estimated_gain_crossing = self._estimate_gain_crossing_from_breaks(
+                            G_s, s_sym, break_frequencies, 0
+                        )
+                        if estimated_gain_crossing:
+                            estimated_phase = self._calculate_phase_at_frequency(
+                                G_s, s_sym, sp.symbols('omega'), estimated_gain_crossing
+                            )
+                            phase_margin = f"{180 + estimated_phase:.1f}°*"
+                        else:
+                            dc_gain = self._get_dc_gain(G_s, s_sym)
+                            if dc_gain and dc_gain > 1:
+                                phase_margin = "Hohe DC-Verst."
+                            else:
+                                phase_margin = "Niedrige Verst."
+                    
+                    margins_data.append({
+                        'System': data['label'],
+                        'Amplitudenreserve': gain_margin,
+                        'Phasenreserve': phase_margin
+                    })
+                except:
+                    margins_data.append({
+                        'System': data['label'],
+                        'Amplitudenreserve': "Fehler",
+                        'Phasenreserve': "Fehler"
+                    })
+            
+            import pandas as pd
+            df_margins = pd.DataFrame(margins_data)
+            st.dataframe(df_margins, use_container_width=True)
+            
+            # Erklärung für Knickfrequenz-basierte Werte
+            if any('*' in str(row.get('Amplitudenreserve', '')) or '*' in str(row.get('Phasenreserve', '')) for row in margins_data):
+                st.info("ℹ️ Werte mit * basieren auf Knickfrequenz-Analyse (System erreicht asymptotisch kritische Werte)")
+    
     def _calculate_stability_margins(self, G_s, s, omega):
         """Berechne Stabilitätsreserven"""
         # Diese Methode wird jetzt von _stability_margins_analysis ersetzt
         st.info("🔗 Detaillierte Stabilitätsreserven finden Sie im Stabilitäts-Tab")
+    
+    def _extract_break_frequencies(self, G_s, s):
+        """Extrahiere Knickfrequenzen aus Übertragungsfunktion"""
+        try:
+            break_freqs = []
+            break_types = []
+            
+            # Pole verarbeiten
+            den = sp.denom(G_s)
+            poles = sp.solve(den, s)
+            if not poles:
+                # Fallback: numerische Methode
+                den_poly = sp.Poly(den, s)
+                coeffs = [float(c) for c in den_poly.all_coeffs()]
+                if len(coeffs) > 1:
+                    numerical_poles = np.roots(coeffs)
+                    poles = [sp.sympify(complex(p)) for p in numerical_poles]
+            
+            for pole in poles:
+                pole_val = complex(pole.evalf())
+                if abs(pole_val.imag) < 1e-10 and pole_val.real < 0:
+                    # Reeller Pol: ωk = |Re(p)|
+                    break_freqs.append(abs(pole_val.real))
+                    break_types.append('pole')
+                elif pole_val.real < 0:
+                    # Komplexer Pol: ωk = |p|
+                    break_freqs.append(abs(pole_val))
+                    break_types.append('complex_pole')
+            
+            # Nullstellen verarbeiten
+            num = sp.numer(G_s)
+            zeros = sp.solve(num, s)
+            if not zeros:
+                # Fallback: numerische Methode
+                num_poly = sp.Poly(num, s)
+                coeffs = [float(c) for c in num_poly.all_coeffs()]
+                if len(coeffs) > 1:
+                    numerical_zeros = np.roots(coeffs)
+                    zeros = [sp.sympify(complex(z)) for z in numerical_zeros]
+            
+            for zero in zeros:
+                zero_val = complex(zero.evalf())
+                if abs(zero_val.imag) < 1e-10:
+                    # Reelle Nullstelle: ωk = |Re(z)|
+                    break_freqs.append(abs(zero_val.real))
+                    break_types.append('zero')
+                else:
+                    # Komplexe Nullstelle: ωk = |z|
+                    break_freqs.append(abs(zero_val))
+                    break_types.append('complex_zero')
+            
+            # Sortiere nach Frequenz
+            sorted_data = sorted(zip(break_freqs, break_types))
+            return sorted_data
+            
+        except Exception as e:
+            st.error(f"Fehler bei Knickfrequenz-Extraktion: {e}")
+            return []
+    
+    def _evaluate_stability_from_break_frequencies(self, break_freqs, G_s, s):
+        """Bewerte Stabilität basierend auf Knickfrequenzen"""
+        try:
+            # DC-Verstärkung bestimmen
+            try:
+                K_dc = float(G_s.subs(s, 0))
+                dc_gain_db = 20 * np.log10(abs(K_dc)) if K_dc != 0 else -float('inf')
+            except:
+                dc_gain_db = 0  # Fallback
+            
+            # Systemordnung bestimmen
+            num_degree = sp.degree(sp.numer(G_s), s)
+            den_degree = sp.degree(sp.denom(G_s), s)
+            system_order = int(den_degree) - int(num_degree) if den_degree and num_degree else 1
+            
+            # Hochfrequenz-Asymptote: -20n dB/Dekade
+            hf_slope = -20 * system_order
+            
+            st.write(f"**Systemanalyse:**")
+            st.write(f"• DC-Verstärkung: {dc_gain_db:.1f} dB")
+            st.write(f"• Systemordnung: {system_order}")
+            st.write(f"• HF-Asymptote: {hf_slope} dB/Dekade")
+            
+            # Abschätzung der kritischen Frequenz
+            if break_freqs and dc_gain_db > 0:
+                # Grobe Abschätzung: Bei welcher Frequenz erreicht System 0dB?
+                # Unter Annahme, dass jede Dekade um 20 dB fällt
+                decades_to_0db = dc_gain_db / 20
+                first_break_freq = break_freqs[0][0]
+                estimated_0db_freq = first_break_freq * (10 ** decades_to_0db)
+                
+                st.write(f"**Kritische Frequenz (geschätzt):** ~{estimated_0db_freq:.2f} rad/s")
+                
+                # Bewertung basierend auf Frequenzabstand
+                freq_separation = min([freq for freq, _ in break_freqs[1:]] + [float('inf')]) / break_freqs[0][0] if len(break_freqs) > 1 else float('inf')
+                
+                if freq_separation > 10:
+                    st.success("✅ Gute Frequenztrennung (> 1 Dekade)")
+                elif freq_separation > 3:
+                    st.warning("⚠️ Moderate Frequenztrennung")
+                else:
+                    st.error("❌ Schlechte Frequenztrennung (< 0.5 Dekaden)")
+            
+        except Exception as e:
+            st.error(f"Fehler bei Knickfrequenz-Bewertung: {e}")
+    
+    def _estimate_phase_margin_from_structure(self, G_s, s):
+        """Schätze Phasenreserve basierend auf Systemstruktur"""
+        try:
+            # Pole und Nullstellen analysieren
+            poles = sp.solve(sp.denom(G_s), s)
+            zeros = sp.solve(sp.numer(G_s), s)
+            
+            # Robuste Fallback-Methode
+            if not poles:
+                den_poly = sp.Poly(sp.denom(G_s), s)
+                coeffs = [float(c) for c in den_poly.all_coeffs()]
+                if len(coeffs) > 1:
+                    numerical_poles = np.roots(coeffs)
+                    poles = [sp.sympify(complex(p)) for p in numerical_poles]
+            
+            if not zeros:
+                num_poly = sp.Poly(sp.numer(G_s), s)
+                coeffs = [float(c) for c in num_poly.all_coeffs()]
+                if len(coeffs) > 1:
+                    numerical_zeros = np.roots(coeffs)
+                    zeros = [sp.sympify(complex(z)) for z in numerical_zeros]
+            
+            # Grobe Phasenreserve-Schätzung
+            total_phase = 0
+            
+            # Beitrag der Pole (jeweils -90° bei hohen Frequenzen)
+            stable_poles = [p for p in poles if complex(p.evalf()).real < 0]
+            total_phase -= len(stable_poles) * 90
+            
+            # Beitrag der Nullstellen (jeweils +90° bei hohen Frequenzen)
+            stable_zeros = [z for z in zeros if complex(z.evalf()).real < 0]
+            total_phase += len(stable_zeros) * 90
+            
+            # Startphase (bei niedrigen Frequenzen ist Phase meist 0°)
+            estimated_phase_margin = 180 + total_phase
+            
+            return estimated_phase_margin
+            
+        except Exception:
+            return None

@@ -4,6 +4,7 @@ Zustandstransformation
 
 import streamlit as st
 import sympy as sp
+import numpy as np
 from modules.base_module import BaseModule
 from utils.display_utils import display_step_by_step, display_latex, display_matrix
 from utils.safe_sympify import safe_sympify
@@ -112,6 +113,48 @@ class StateTransformationModule(BaseModule):
     def _calculate_jordan_form(self, A):
         """Berechnet die Jordan-Normalform"""
         self.logger.clear()
+        
+        # Eingegebe Matrix anzeigen
+        st.markdown("---")
+        st.markdown("### 📋 Eingegebene Matrix")
+        
+        col_matrix, col_info = st.columns([2, 1])
+        
+        with col_matrix:
+            st.markdown("**Systemmatrix A:**")
+            # Matrix in LaTeX-Format anzeigen
+            matrix_latex = sp.latex(A)
+            st.latex(f"A = {matrix_latex}")
+            
+            # Matrix auch als Zahlen anzeigen
+            st.markdown("**Numerische Darstellung:**")
+            matrix_array = np.array(A).astype(float)
+            st.write(matrix_array)
+        
+        with col_info:
+            st.markdown("**Matrix-Eigenschaften:**")
+            rows, cols = A.shape
+            st.write(f"• Dimension: {rows}×{cols}")
+            st.write(f"• Quadratisch: {'Ja' if rows == cols else 'Nein'}")
+            
+            if rows == cols:
+                det_A = A.det()
+                st.write(f"• Determinante: {det_A}")
+                st.write(f"• Invertierbar: {'Ja' if det_A != 0 else 'Nein'}")
+                
+                # Spur (Trace)
+                trace_A = A.trace()
+                st.write(f"• Spur: {trace_A}")
+                
+                # Zusätzliche Info
+                st.markdown("**Analyse-Bereitschaft:**")
+                if det_A == 0:
+                    st.warning("⚠️ Singulär - Jordan-Form kann degeneriert sein")
+                else:
+                    st.success("✅ Bereit für Jordan-Normalform")
+        
+        st.markdown("---")
+        st.markdown("### 🔧 Berechnungsschritte")
         
         # Schritt 1: Eigenwerte berechnen
         self.logger.add_step(
